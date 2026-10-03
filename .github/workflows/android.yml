@@ -1,0 +1,60 @@
+# Сборка APK «Лифт». Запуск: GitHub → Actions → «Android APK» → Run workflow
+# (и сам — при каждом изменении в main). Готовый файл: внизу страницы запуска, раздел Artifacts.
+# Адрес сервера, который откроет приложение: Settings → Secrets and variables → Actions → Variables → LIFT_URL
+name: Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Проверка LIFT_URL
+        env:
+          LIFT_URL: ${{ vars.LIFT_URL }}
+        run: |
+          if [ -z "$LIFT_URL" ]; then
+            echo "::error::Задайте переменную LIFT_URL (Settings → Secrets and variables → Actions → Variables), например https://lift.example.ru"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Сборка приложения
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build -w web
+
+      - name: Android-проект
+        working-directory: apps/web
+        env:
+          LIFT_URL: ${{ vars.LIFT_URL }}
+        run: npx cap sync android
+
+      - name: APK
+        working-directory: apps/web/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/out/lift-${GITHUB_SHA::7}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lift-apk
+          path: out/*.apk
+          retention-days: 30

@@ -1,0 +1,433 @@
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import {
+  api,
+  dueLabel,
+  type Answers,
+  type FileInfo,
+  type Overview,
+  type Section,
+  type StageItem,
+  type TaskItem,
+  type ToolItem,
+} from "../../api";
+import FloorCard from "../../components/FloorCard";
+import TeamLayout, { copyText } from "./TeamLayout";
+
+type Detail = Overview & {
+  profile: { phone: string; consentAt: string | null; inviteUrl: string };
+  surveySections: Section[];
+  answers: Answers;
+  files: Record<string, FileInfo>;
+};
+
+type Tab = "profile" | "strategy" | "tasks" | "tools" | "survey";
+const TABS: [Tab, string][] = [
+  ["profile", "Профиль и цель"],
+  ["strategy", "Стратегия"],
+  ["tasks", "Задачи"],
+  ["tools", "Инструменты"],
+  ["survey", "Анкета"],
+];
+
+export default function TeamPilot() {
+  const { id = "" } = useParams();
+  const [d, setD] = useState<Detail | null>(null);
+  const [tab, setTab] = useState<Tab>("profile");
+  const [err, setErr] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      setD(await api<Detail>(`/api/team/pilots/${id}`));
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (!d) return <TeamLayout><p className="muted">{err || "Загрузка…"}</p></TeamLayout>;
+
+  return (
+    <TeamLayout>
+      <div className="team__head">
+        <div>
+          <h1 className="h1">{d.pilot.business || d.pilot.name}</h1>
+          <p className="muted">{[d.pilot.name, d.pilot.niche].filter(Boolean).join(" · ")}</p>
+        </div>
+      </div>
+      <div className="tabs" role="tablist">
+        {TABS.map(([k, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === "profile" ? <ProfileTab d={d} reload={load} /> : null}
+      {tab === "strategy" ? <StrategyTab d={d} reload={load} /> : null}
+      {tab === "tasks" ? <TasksTab d={d} reload={load} /> : null}
+      {tab === "tools" ? <ToolsTab d={d} reload={load} /> : null}
+      {tab === "survey" ? <SurveyTab d={d} /> : null}
+    </TeamLayout>
+  );
+}
+
+type TabProps = { d: Detail; reload: () => Promise<void> };
+
+function useSaver() {
+  const [state, setState] = useState<{ busy: boolean; msg: string; err: string }>({ busy: false, msg: "", err: "" });
+  async function run(fn: () => Promise<unknown>, ok = "Сохранено") {
+    setState({ busy: true, msg: "", err: "" });
+    try {
+      await fn();
+      setState({ busy: false, msg: ok, err: "" });
+    } catch (e) {
+      setState({ busy: false, msg: "", err: (e as Error).message });
+    }
+  }
+  const note = state.err ? <p className="error">{state.err}</p> : state.msg ? <p className="ok">✓ {state.msg}</p> : null;
+  return { busy: state.busy, run, note };
+}
+
+function ProfileTab({ d, reload }: TabProps) {
+  const nav = useNavigate();
+  const [f, setF] = useState({
+    name: d.pilot.name,
+    business: d.pilot.business,
+    niche: d.pilot.niche,
+    phone: d.profile.phone,
+    goal: d.pilot.goal,
+    goalNote: d.pilot.goalNote,
+    planTitle: d.pilot.planTitle,
+    teamNote: d.pilot.teamNote,
+  });
+  const [invite, setInvite] = useState(d.profile.inviteUrl);
+  const s = useSaver();
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setF({ ...f, [k]: e.target.value });
+
+  return (
+    <div className="team-grid">
+      <form
+        className="card team-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void s.run(async () => {
+            await api(`/api/team/pilots/${d.pilot.id}`, { method: "PUT", json: f });
+            await reload();
+          });
+        }}
+      >
+        <label className="field"><span>Имя (как обращаться)</span><input value={f.name} onChange={set("name")} required /></label>
+        <label className="field"><span>Бизнес</span><input value={f.business} onChange={set("business")} /></label>
+        <label className="field"><span>Ниша</span><input value={f.niche} onChange={set("niche")} /></label>
+        <label className="field"><span>Телефон</span><input value={f.phone} onChange={set("phone")} /></label>
+        <label className="field wide"><span>Цель стратегии</span><input value={f.goal} onChange={set("goal")} placeholder="15 объектов в управлении к марту 2027" /></label>
+        <label className="field wide"><span>Пояснение к цели</span><input value={f.goalNote} onChange={set("goalNote")} placeholder="Сейчас 4 · из ответа на вопрос 15 анкеты" /></label>
+        <label className="field wide"><span>Подпись плана</span><input value={f.planTitle} onChange={set("planTitle")} placeholder="план на 6 месяцев" /></label>
+        <label className="field wide"><span>Заметка команды (видна пилоту в «Стратегии»)</span><textarea rows={3} value={f.teamNote} onChange={set("teamNote")} /></label>
+        <div className="wide row-gap">
+          <button className="btn btn--primary" type="submit" disabled={s.busy}>Сохранить</button>
+          {s.note}
+        </div>
+      </form>
+
+      <div className="stack">
+        <FloorCard game={d.game} />
+        <div className="card stack">
+          <p className="strong">Ссылка-приглашение</p>
+          <p className="invite-url">{invite}</p>
+          <p className="muted small">
+            {d.profile.consentAt ? `Пилот вошёл и дал согласие на ПДн: ${d.profile.consentAt}` : "Пилот ещё не входил"}
+          </p>
+          <div className="row-gap">
+            <button type="button" className="btn btn--soft" onClick={() => void copyText(invite)}>Скопировать</button>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => {
+                if (!window.confirm("Выпустить новую ссылку? Старая перестанет работать, пилоту нужно будет войти заново.")) return;
+                void api<{ inviteUrl: string }>(`/api/team/pilots/${d.pilot.id}/invite`, { method: "POST" }).then((r) =>
+                  setInvite(r.inviteUrl),
+                );
+              }}
+            >
+              Новая ссылка
+            </button>
+          </div>
+        </div>
+        <button
+          type="button"
+          className="btn btn--danger"
+          onClick={() => {
+            if (!window.confirm("Убрать пилота в архив? Он потеряет доступ к приложению.")) return;
+            void api(`/api/team/pilots/${d.pilot.id}/archive`, { method: "POST" }).then(() => nav("/team"));
+          }}
+        >
+          В архив
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const STAGE_TEMPLATE: Omit<StageItem, "id">[] = [
+  { title: "Упаковка", description: "Анкета, сайт, тексты и фото", status: "current" },
+  { title: "Запуск каналов", description: "Боты в MAX и Telegram, заявки с сайта", status: "next" },
+  { title: "Первые клиенты", description: "SMM, автопостинг, отзывы", status: "next" },
+  { title: "Масштаб", description: "Автоматизация, новые направления", status: "next" },
+];
+
+function StrategyTab({ d, reload }: TabProps) {
+  const [list, setList] = useState<Omit<StageItem, "id">[]>(
+    d.stages.length ? d.stages.map(({ title, description, status }) => ({ title, description, status })) : [],
+  );
+  const s = useSaver();
+  const upd = (i: number, patch: Partial<StageItem>) => setList(list.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const move = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= list.length) return;
+    const next = list.slice();
+    [next[i], next[j]] = [next[j], next[i]];
+    setList(next);
+  };
+
+  return (
+    <div className="stack">
+      {list.length === 0 ? (
+        <div className="card stack">
+          <p className="muted">Этапов пока нет.</p>
+          <button type="button" className="btn btn--soft" onClick={() => setList(STAGE_TEMPLATE)}>Взять типовые 4 этапа</button>
+        </div>
+      ) : null}
+      {list.map((st, i) => (
+        <div key={i} className="card team-form">
+          <label className="field"><span>Этап {i + 1}</span><input value={st.title} onChange={(e) => upd(i, { title: e.target.value })} /></label>
+          <label className="field"><span>Статус</span>
+            <select value={st.status} onChange={(e) => upd(i, { status: e.target.value as StageItem["status"] })}>
+              <option value="done">Готово</option>
+              <option value="current">Сейчас</option>
+              <option value="next">Дальше</option>
+            </select>
+          </label>
+          <label className="field wide"><span>Что входит</span><textarea rows={2} value={st.description} onChange={(e) => upd(i, { description: e.target.value })} /></label>
+          <div className="wide row-gap">
+            <button type="button" className="btn btn--ghost" onClick={() => move(i, -1)} aria-label="Выше">↑</button>
+            <button type="button" className="btn btn--ghost" onClick={() => move(i, 1)} aria-label="Ниже">↓</button>
+            <button type="button" className="btn btn--ghost" onClick={() => setList(list.filter((_, j) => j !== i))}>Удалить</button>
+          </div>
+        </div>
+      ))}
+      <div className="row-gap">
+        <button type="button" className="btn btn--soft" onClick={() => setList([...list, { title: "", description: "", status: "next" }])}>+ Этап</button>
+        <button
+          type="button"
+          className="btn btn--primary"
+          disabled={s.busy}
+          onClick={() =>
+            void s.run(async () => {
+              await api(`/api/team/pilots/${d.pilot.id}/stages`, { method: "PUT", json: { stages: list } });
+              await reload();
+            })
+          }
+        >
+          Сохранить стратегию
+        </button>
+        {s.note}
+      </div>
+    </div>
+  );
+}
+
+const emptyTask = { title: "", description: "", dueDate: "", points: 50 };
+
+function TasksTab({ d, reload }: TabProps) {
+  const [form, setForm] = useState(emptyTask);
+  const [editId, setEditId] = useState<number | null>(null);
+  const s = useSaver();
+
+  function edit(t: TaskItem) {
+    setEditId(t.id);
+    setForm({ title: t.title, description: t.description, dueDate: t.dueDate || "", points: t.points });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  return (
+    <div className="stack">
+      <form
+        className="card team-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void s.run(async () => {
+            if (editId) await api(`/api/team/tasks/${editId}`, { method: "PUT", json: form });
+            else await api(`/api/team/pilots/${d.pilot.id}/tasks`, { method: "POST", json: form });
+            setForm(emptyTask);
+            setEditId(null);
+            await reload();
+          }, editId ? "Задача обновлена" : "Задача добавлена");
+        }}
+      >
+        <label className="field wide"><span>{editId ? "Изменить задачу" : "Новая задача"}</span>
+          <input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Загрузить фото 6 объектов" /></label>
+        <label className="field wide"><span>Подробности</span>
+          <textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></label>
+        <label className="field"><span>Срок</span>
+          <input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></label>
+        <label className="field"><span>Баллы</span>
+          <input type="number" min={0} max={1000} step={10} value={form.points} onChange={(e) => setForm({ ...form, points: Number(e.target.value) })} /></label>
+        <div className="wide row-gap">
+          <button className="btn btn--primary" type="submit" disabled={s.busy}>{editId ? "Сохранить" : "Добавить задачу"}</button>
+          {editId ? <button type="button" className="btn btn--ghost" onClick={() => { setEditId(null); setForm(emptyTask); }}>Отмена</button> : null}
+          {s.note}
+        </div>
+      </form>
+
+      <div className="table-box">
+        <table className="table">
+          <thead><tr><th>Задача</th><th>Срок</th><th>Баллы</th><th>Статус</th><th /></tr></thead>
+          <tbody>
+            {d.tasks.length === 0 ? (
+              <tr><td colSpan={5} className="muted">Задач пока нет.</td></tr>
+            ) : (
+              d.tasks.map((t) => (
+                <tr key={t.id}>
+                  <td><span className="strong">{t.title}</span>{t.description ? <small className="muted block">{t.description}</small> : null}</td>
+                  <td className={t.overdue ? "warn strong" : ""}>{dueLabel(t.dueDate, !!t.doneAt) || "—"}</td>
+                  <td>{t.doneAt ? `${t.earned} из ${t.points}` : t.points}</td>
+                  <td>{t.doneAt ? `сделано ${t.doneAt.slice(0, 10)}` : t.overdue ? "просрочено" : "в работе"}</td>
+                  <td className="nowrap">
+                    <button type="button" className="btn btn--ghost" onClick={() => edit(t)}>Изменить</button>
+                    <button
+                      type="button"
+                      className="btn btn--ghost"
+                      onClick={() => {
+                        if (!window.confirm(`Удалить задачу «${t.title}»?`)) return;
+                        void api(`/api/team/tasks/${t.id}`, { method: "DELETE" }).then(reload);
+                      }}
+                    >
+                      Удалить
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+type ToolDraft = Omit<ToolItem, "id">;
+const TOOL_KINDS: [string, string][] = [
+  ["site", "Сайт"],
+  ["bot_max", "Бот MAX"],
+  ["bot_tg", "Бот Telegram"],
+  ["smm", "Соцсети / автопостинг"],
+  ["other", "Другое"],
+];
+const TOOL_TEMPLATE: ToolDraft[] = [
+  { kind: "site", title: "Сайт", subtitle: "", url: "", adminUrl: "", status: "setup" },
+  { kind: "bot_max", title: "Бот в MAX", subtitle: "Заявки с сайта и каталог", url: "", adminUrl: "", status: "soon" },
+  { kind: "bot_tg", title: "Бот в Telegram", subtitle: "", url: "", adminUrl: "", status: "soon" },
+  { kind: "smm", title: "Автопостинг в соцсети", subtitle: "VK, Telegram, MAX по графику", url: "", adminUrl: "", status: "soon" },
+];
+
+function ToolsTab({ d, reload }: TabProps) {
+  const [list, setList] = useState<ToolDraft[]>(d.tools.map(({ id: _id, ...t }) => t));
+  const s = useSaver();
+  const upd = (i: number, patch: Partial<ToolDraft>) => setList(list.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  return (
+    <div className="stack">
+      {list.length === 0 ? (
+        <div className="card stack">
+          <p className="muted">Инструментов пока нет.</p>
+          <button type="button" className="btn btn--soft" onClick={() => setList(TOOL_TEMPLATE)}>Добавить типовой набор</button>
+        </div>
+      ) : null}
+      {list.map((t, i) => (
+        <div key={i} className="card team-form">
+          <label className="field"><span>Тип</span>
+            <select value={t.kind} onChange={(e) => upd(i, { kind: e.target.value })}>
+              {TOOL_KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            </select>
+          </label>
+          <label className="field"><span>Статус</span>
+            <select value={t.status} onChange={(e) => upd(i, { status: e.target.value as ToolItem["status"] })}>
+              <option value="works">Работает</option>
+              <option value="setup">Подключаем</option>
+              <option value="soon">Скоро</option>
+            </select>
+          </label>
+          <label className="field"><span>Название</span><input value={t.title} onChange={(e) => upd(i, { title: e.target.value })} /></label>
+          <label className="field"><span>Подпись</span><input value={t.subtitle} onChange={(e) => upd(i, { subtitle: e.target.value })} placeholder="myrenthub.ru" /></label>
+          <label className="field"><span>Ссылка «Открыть»</span><input type="url" value={t.url} onChange={(e) => upd(i, { url: e.target.value })} placeholder="https://…" /></label>
+          <label className="field"><span>Ссылка «Админка»</span><input type="url" value={t.adminUrl} onChange={(e) => upd(i, { adminUrl: e.target.value })} placeholder="https://…/admin" /></label>
+          <div className="wide row-gap">
+            <button type="button" className="btn btn--ghost" onClick={() => setList(list.filter((_, j) => j !== i))}>Удалить</button>
+          </div>
+        </div>
+      ))}
+      <div className="row-gap">
+        <button type="button" className="btn btn--soft" onClick={() => setList([...list, { kind: "other", title: "", subtitle: "", url: "", adminUrl: "", status: "soon" }])}>+ Инструмент</button>
+        <button
+          type="button"
+          className="btn btn--primary"
+          disabled={s.busy}
+          onClick={() =>
+            void s.run(async () => {
+              await api(`/api/team/pilots/${d.pilot.id}/tools`, { method: "PUT", json: { tools: list } });
+              await reload();
+            })
+          }
+        >
+          Сохранить инструменты
+        </button>
+        {s.note}
+      </div>
+    </div>
+  );
+}
+
+function SurveyTab({ d }: { d: Detail }) {
+  const fmt = (v: unknown) => (Array.isArray(v) ? v.join(", ") : typeof v === "string" ? v : "");
+  return (
+    <div className="stack">
+      <p className="muted">
+        Заполнено {d.survey.answered} из {d.survey.total} · обязательных {d.survey.requiredDone} из {d.survey.requiredTotal}
+      </p>
+      {d.surveySections.map((s) => (
+        <section key={s.id} className="card stack">
+          <h2 className="h2">{s.title}</h2>
+          {s.questions.map((q) => {
+            const v = d.answers[q.id];
+            return (
+              <div key={q.id} className="answer">
+                <p className="answer__q">{q.id.slice(1)}. {q.title}{q.required ? " *" : ""}</p>
+                {q.type === "files" ? (
+                  Array.isArray(v) && v.length ? (
+                    <ul className="files">
+                      {v.map((fid) => {
+                        const f = d.files[fid];
+                        return f ? (
+                          <li key={fid} className="files__item">
+                            {f.mime.startsWith("image/") && f.mime !== "image/svg+xml" ? <img src={f.url} alt="" /> : <span className="files__doc">{f.name.split(".").pop()?.toUpperCase()}</span>}
+                            <a className="files__name" href={f.url} target="_blank" rel="noreferrer" download={f.name}>{f.name}</a>
+                          </li>
+                        ) : null;
+                      })}
+                    </ul>
+                  ) : <p className="muted">—</p>
+                ) : (
+                  <p className="answer__a">{fmt(v) || <span className="muted">—</span>}</p>
+                )}
+              </div>
+            );
+          })}
+        </section>
+      ))}
+    </div>
+  );
+}

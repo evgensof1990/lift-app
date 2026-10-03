@@ -37,7 +37,7 @@ type State = {
   files: DFile[];
 };
 
-const KEY = "lift.demo.v2";
+const KEY = "lift.demo.v3";
 const day = (n: number) => {
   const d = new Date();
   d.setDate(d.getDate() + n);
@@ -78,9 +78,6 @@ function seed(): State {
     ],
     stages: [],
     tools: [
-      { id: 1, pilot_id: 1, kind: "site", title: "Сайт", subtitle: "workshop4.ru", url: "https://workshop4.ru", admin_url: "https://workshop4.ru/admin", status: "works" },
-      { id: 2, pilot_id: 1, kind: "bot_max", title: "Магазин в MAX", subtitle: "Каталог и заявки", url: "", admin_url: "", status: "works" },
-      { id: 3, pilot_id: 1, kind: "smm", title: "Автопостинг ВК + MAX", subtitle: "По контент-плану", url: "", admin_url: "", status: "soon" },
       { id: 4, pilot_id: 2, kind: "site", title: "Сайт", subtitle: "myrenthub.ru", url: "https://myrenthub.ru", admin_url: "https://myrenthub.ru/admin", status: "works" },
     ],
     answers: { 1: { q1: "Цех №4", q3: "Товары — изделия, которые можно заказать и получить" } },
@@ -110,6 +107,10 @@ function importInto(s: State, pilotId: number, st: StrategyImport) {
   if (st.stages) {
     s.stages = s.stages.filter((x) => x.pilot_id !== pilotId);
     st.stages.forEach((x) => s.stages.push({ id: s.seq++, pilot_id: pilotId, title: x.title, description: x.description || "", status: (x.status || "next") as StageRow["status"] }));
+  }
+  if (st.tools) {
+    s.tools = s.tools.filter((x) => x.pilot_id !== pilotId);
+    st.tools.forEach((t) => s.tools.push({ id: s.seq++, pilot_id: pilotId, kind: t.kind, title: t.title, subtitle: t.subtitle || "", url: t.url || "", admin_url: t.adminUrl || "", status: (t.status || "works") as ToolRow["status"] }));
   }
   return { goals: st.goals.length, tasks: st.goals.reduce((n, g) => n + (g.tasks?.length || 0), 0) };
 }

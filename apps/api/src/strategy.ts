@@ -54,6 +54,13 @@ export function importStrategy(pilotId: number, s: StrategyImport) {
       const ins = db.prepare("INSERT INTO stages (pilot_id, sort_order, title, description, status) VALUES (?, ?, ?, ?, ?)");
       s.stages.forEach((st, i) => ins.run(pilotId, i, st.title, st.description || "", st.status || "next"));
     }
+    if (s.tools) {
+      db.prepare("DELETE FROM tools WHERE pilot_id = ?").run(pilotId);
+      const ins = db.prepare(
+        "INSERT INTO tools (pilot_id, sort_order, kind, title, subtitle, url, admin_url, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      );
+      s.tools.forEach((t, i) => ins.run(pilotId, i, t.kind, t.title, t.subtitle || "", t.url || "", t.adminUrl || "", t.status || "works"));
+    }
   })();
   return { goals, tasks };
 }

@@ -175,6 +175,8 @@ export type StrategyImport = {
   planTitle?: string;
   teamNote?: string;
   stages?: { title: string; description?: string; status?: string }[];
+  /** Сайт, админка, боты пилота — если переданы, заменяют список инструментов */
+  tools?: { kind: string; title: string; subtitle?: string; url?: string; adminUrl?: string; status?: string }[];
   goals: { title: string; description?: string; tasks?: { title: string; description?: string; dueDate?: string; points?: number }[] }[];
 };
 
@@ -210,6 +212,22 @@ export function parseStrategy(raw: unknown): StrategyImport | string {
           status: ["done", "current", "next"].includes(String(x.status)) ? String(x.status) : "next",
         })).filter((x) => x.title)
       : undefined,
+    tools: Array.isArray(s.tools)
+      ? (s.tools as Record<string, unknown>[]).slice(0, 30).map((x) => ({
+          kind: str(x.kind, 30) || "other",
+          title: str(x.title, 100),
+          subtitle: str(x.subtitle, 150),
+          url: safeUrl(x.url),
+          adminUrl: safeUrl(x.adminUrl),
+          status: ["works", "setup", "soon"].includes(String(x.status)) ? String(x.status) : "works",
+        })).filter((x) => x.title)
+      : undefined,
     goals,
   };
+}
+
+/** Ссылки инструментов — только http(s) */
+export function safeUrl(v: unknown) {
+  const u = String(v ?? "").trim().slice(0, 500);
+  return /^https?:\/\//i.test(u) ? u : "";
 }

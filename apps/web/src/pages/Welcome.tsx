@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { DEMO, setSession } from "../api";
 import { LogoMark } from "../components/Logo";
@@ -5,6 +6,20 @@ import { LogoMark } from "../components/Logo";
 /** Экран без входа: пилот попадает в приложение только по ссылке-приглашению */
 export default function Welcome() {
   const nav = useNavigate();
+  const [link, setLink] = useState("");
+  const [err, setErr] = useState("");
+
+  /** Ссылка вида https://…/invite/<код> или просто код */
+  function enter(e: React.FormEvent) {
+    e.preventDefault();
+    const m = link.trim().match(/(?:invite\/)?([A-Za-z0-9_-]{16,})\/?$/);
+    if (!m) {
+      setErr("Не похоже на ссылку-приглашение. Скопируйте её из сообщения целиком.");
+      return;
+    }
+    nav(`/invite/${m[1]}`);
+  }
+
   return (
     <div className="screen screen--center welcome">
       <LogoMark size={84} />
@@ -43,9 +58,26 @@ export default function Welcome() {
         </div>
       ) : (
         <>
-          <p className="muted center">
-            Чтобы войти, откройте ссылку-приглашение, которую прислала команда. Нет ссылки — напишите своему менеджеру.
-          </p>
+          <form className="welcome__form" onSubmit={enter}>
+            <label className="field">
+              <span>Ссылка-приглашение от команды</span>
+              <input
+                type="text"
+                inputMode="url"
+                autoCapitalize="off"
+                autoComplete="off"
+                placeholder="https://lift.myrenthub.ru/invite/…"
+                value={link}
+                onChange={(e) => {
+                  setLink(e.target.value);
+                  setErr("");
+                }}
+              />
+            </label>
+            {err ? <p className="error">{err}</p> : null}
+            <button className="btn btn--primary" type="submit" disabled={!link.trim()}>Войти</button>
+            <p className="muted small center">Нет ссылки — напишите своему менеджеру.</p>
+          </form>
           <Link to="/team/login" className="link small">Вход для команды</Link>
         </>
       )}

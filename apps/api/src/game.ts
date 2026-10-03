@@ -4,12 +4,14 @@
  * - вся обязательная часть анкеты — SURVEY_POINTS;
  * - серия — сколько полных недель подряд не было просрочек.
  */
-import type { Task } from "./db.js";
 
 /** Сколько баллов нужно, чтобы оказаться на этаже N (индекс = N − 1) */
 export const FLOORS = [0, 150, 400, 750, 1200, 1800, 2500, 3300, 4200, 5200, 6500, 8000];
 
 const DAY = 24 * 60 * 60 * 1000;
+
+/** Поля задачи, нужные игре (строка таблицы tasks) */
+type Task = { due_date: string | null; done_at: string | null; points: number };
 
 /** Конец дня срока (23:59:59) по московскому времени */
 export function dueEnd(due: string) {

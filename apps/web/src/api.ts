@@ -39,7 +39,18 @@ export class ApiError extends Error {
   }
 }
 
+/** Демо-сборка (VITE_DEMO=1): без сервера, данные-примеры в телефоне */
+export const DEMO = import.meta.env.VITE_DEMO === "1";
+
 export async function api<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
+  if (DEMO) {
+    const { demoApi } = await import("./demo");
+    try {
+      return (await demoApi(path, init.method || "GET", init.json, init.body)) as T;
+    } catch (e) {
+      throw new ApiError((e as Error).message, (e as { status?: number }).status || 400);
+    }
+  }
   const headers = new Headers(init.headers);
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);

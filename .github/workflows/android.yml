@@ -1,6 +1,7 @@
 # Сборка APK «Лифт». Запуск: GitHub → Actions → «Android APK» → Run workflow
 # (и сам — при каждом изменении в main). Готовый файл: внизу страницы запуска, раздел Artifacts.
-# Адрес сервера, который откроет приложение: Settings → Secrets and variables → Actions → Variables → LIFT_URL
+# Адрес сервера, который откроет приложение: Settings → Secrets and variables → Actions → Variables → LIFT_URL.
+# Пока LIFT_URL не задан — собирается демо-APK: работает без сервера, на примерных данных.
 name: Android APK
 
 on:
@@ -15,13 +16,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Проверка LIFT_URL
+      - name: Вариант сборки
         env:
           LIFT_URL: ${{ vars.LIFT_URL }}
         run: |
-          if [ -z "$LIFT_URL" ]; then
-            echo "::error::Задайте переменную LIFT_URL (Settings → Secrets and variables → Actions → Variables), например https://lift.example.ru"
-            exit 1
+          if [ -n "$LIFT_URL" ]; then
+            echo "FLAVOR=server" >> "$GITHUB_ENV"
+          else
+            echo "FLAVOR=demo" >> "$GITHUB_ENV"
+            echo "::notice::LIFT_URL не задан — собираю демо-APK без сервера"
           fi
 
       - uses: actions/setup-node@v4
@@ -37,13 +40,15 @@ jobs:
       - name: Сборка приложения
         run: |
           npm ci --no-audit --no-fund
-          npm run build -w web
+          if [ "$FLAVOR" = demo ]; then VITE_DEMO=1 npm run build -w web; else npm run build -w web; fi
 
       - name: Android-проект
         working-directory: apps/web
         env:
           LIFT_URL: ${{ vars.LIFT_URL }}
-        run: npx cap sync android
+        run: |
+          if [ "$FLAVOR" = demo ]; then unset LIFT_URL; fi
+          npx cap sync android
 
       - name: APK
         working-directory: apps/web/android
@@ -51,7 +56,7 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
           mkdir -p "$GITHUB_WORKSPACE/out"
-          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/out/lift-${GITHUB_SHA::7}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/out/lift-${FLAVOR}-${GITHUB_SHA::7}.apk"
 
       - uses: actions/upload-artifact@v4
         with:

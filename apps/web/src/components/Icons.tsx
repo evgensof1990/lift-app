@@ -32,6 +32,9 @@ export const IconGrid = ({ size }: P) => (
 export const IconForm = ({ size }: P) => (
   <svg {...base(size)}><rect x="5" y="3" width="14" height="18" rx="3" /><path d="M9 8h6M9 12h6M9 16h3" /></svg>
 );
+export const IconMegaphone = ({ size }: P) => (
+  <svg {...base(size)}><path d="M4 10v4h3l6 4V6L7 10H4zM16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11" /></svg>
+);
 export const IconBack = ({ size }: P) => (
   <svg {...base(size)} strokeWidth={2.4}><path d="M15 5l-7 7 7 7" /></svg>
 );

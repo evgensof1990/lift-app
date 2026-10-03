@@ -1,26 +1,43 @@
 /**
  * Демо-режим (сборка с VITE_DEMO=1): сервер не нужен, данные — примерные и живут в памяти телефона.
- * Повторяет ответы настоящего API, чтобы экраны работали как в жизни. Для показа и тестов.
+ * Повторяет ответы настоящего API на тех же функциях (apps/api/src/model.ts), чтобы экраны работали как в жизни.
+ * Пилот в демо — «Цех №4» со стратегией на согласовании (strategies/tseh4.json).
  */
-import { gameState, isOverdue, taskPoints } from "../../api/src/game";
+import {
+  applyDecisions,
+  buildOverview,
+  buildReview,
+  parseStrategy,
+  publicTask,
+  type GoalRow,
+  type PilotRow,
+  type StageRow,
+  type Status,
+  type StrategyImport,
+  type TaskRow,
+  type ToolRow,
+} from "../../api/src/model";
 import { QUESTION_BY_ID, SURVEY, SURVEY_INTRO, SURVEY_POINTS, SURVEY_TITLE, normalizeAnswer, surveyProgress } from "../../api/src/survey";
+import tseh4 from "../../../strategies/tseh4.json";
 
-type DPilot = {
-  id: number; name: string; business: string; niche: string; phone: string; goal: string; goal_note: string;
-  plan_title: string; team_note: string; consent_at: string | null; archived: number; created_at: string; invite: string;
-};
-type DTask = { id: number; pilot_id: number; title: string; description: string; due_date: string | null; points: number; done_at: string | null };
-type DStage = { id: number; pilot_id: number; title: string; description: string; status: "done" | "current" | "next" };
-type DTool = { id: number; pilot_id: number; kind: string; title: string; subtitle: string; url: string; admin_url: string; status: "works" | "setup" | "soon" };
+type DPilot = PilotRow & { phone: string; consent_at: string | null; archived: number; invite: string };
+type DGoal = GoalRow & { pilot_id: number };
+type DTask = TaskRow & { pilot_id: number };
+type DStage = StageRow & { pilot_id: number };
+type DTool = ToolRow & { pilot_id: number };
 type DFile = { id: string; pilot_id: number; name: string; mime: string; size: number; url: string };
 type State = {
   seq: number;
-  pilots: DPilot[]; tasks: DTask[]; stages: DStage[]; tools: DTool[];
+  pilots: DPilot[];
+  goals: DGoal[];
+  tasks: DTask[];
+  stages: DStage[];
+  tools: DTool[];
   answers: Record<number, Record<string, unknown>>;
   files: DFile[];
 };
 
-const KEY = "lift.demo.v1";
+const KEY = "lift.demo.v2";
 const day = (n: number) => {
   const d = new Date();
   d.setDate(d.getDate() + n);
@@ -29,46 +46,72 @@ const day = (n: number) => {
 const now = () => new Date().toISOString().slice(0, 19).replace("T", " ");
 const ago = (n: number) => `${day(-n)} 10:00:00`;
 
-function seed(): State {
-  const pilots: DPilot[] = [
-    { id: 1, name: "Анна", business: "Рентал", niche: "Управление арендой", phone: "", goal: "15 объектов в управлении к марту 2027", goal_note: "Сейчас 4 объекта", plan_title: "план на 6 месяцев", team_note: "Сначала бот MAX: туда придут заявки с сайта. Авито подключим после первых 5 отзывов.", consent_at: ago(20), archived: 0, created_at: ago(40), invite: "demo-anna" },
-    { id: 2, name: "Ольга", business: "Студия «Лак»", niche: "Маникюр", phone: "", goal: "Запись заполнена на 2 недели вперёд", goal_note: "", plan_title: "план на 3 месяца", team_note: "", consent_at: ago(5), archived: 0, created_at: ago(10), invite: "demo-olga" },
-    { id: 3, name: "Игорь", business: "Мастерская «Дуб»", niche: "Изделия из дерева", phone: "", goal: "100 заказов в месяц", goal_note: "", plan_title: "план на 6 месяцев", team_note: "", consent_at: null, archived: 0, created_at: ago(2), invite: "demo-igor" },
-  ];
-  const t = (id: number, pilot_id: number, title: string, description: string, due: number | null, points: number, done: number | null): DTask =>
-    ({ id, pilot_id, title, description, due_date: due === null ? null : day(due), points, done_at: done === null ? null : ago(done) });
-  const tasks = [
-    t(1, 1, "Познакомиться с командой", "", null, 150, 30),
-    t(2, 1, "Заполнить анкету для сайта", "Можно по частям — ответы сохраняются сами", 3, 50, null),
-    t(3, 1, "Загрузить фото 6 объектов", "Вертикальные, при дневном свете", 1, 50, null),
-    t(4, 1, "Создать бота в MAX", "Инструкция: платформа MAX → Чат-боты → Создать", 7, 80, null),
-    t(5, 1, "Написать 3 отзыва клиентов", "", -4, 50, 5),
-    t(6, 1, "Подать уведомление в РКН", "pd.rkn.gov.ru — поможем заполнить", 11, 100, null),
-    t(7, 2, "Заполнить анкету для сайта", "", -1, 50, null),
-    t(8, 2, "Прислать прайс", "", 2, 40, null),
-    t(9, 3, "Познакомиться с командой", "", null, 150, null),
-  ];
-  const s = (id: number, pilot_id: number, title: string, description: string, status: DStage["status"]): DStage => ({ id, pilot_id, title, description, status });
-  const stages = [
-    s(1, 1, "Упаковка", "Анкета, сайт, тексты и фото", "done"),
-    s(2, 1, "Запуск каналов", "Бот в MAX, заявки с сайта, Авито", "current"),
-    s(3, 1, "Первые клиенты", "SMM, автопостинг, отзывы", "next"),
-    s(4, 1, "Масштаб", "Автоматизация, новые районы", "next"),
-    s(5, 2, "Упаковка", "Анкета, сайт, фото работ", "current"),
-    s(6, 2, "Запись онлайн", "Бот в Telegram с записью", "next"),
-  ];
-  const tools: DTool[] = [
-    { id: 1, pilot_id: 1, kind: "site", title: "Сайт", subtitle: "myrenthub.ru", url: "https://myrenthub.ru", admin_url: "https://myrenthub.ru/admin", status: "works" },
-    { id: 2, pilot_id: 1, kind: "bot_max", title: "Бот в MAX", subtitle: "Заявки с сайта и каталог", url: "", admin_url: "", status: "setup" },
-    { id: 3, pilot_id: 1, kind: "bot_tg", title: "Бот в Telegram", subtitle: "По стратегии — этап 3", url: "", admin_url: "", status: "soon" },
-    { id: 4, pilot_id: 1, kind: "smm", title: "Автопостинг в соцсети", subtitle: "VK, Telegram, MAX по графику", url: "", admin_url: "", status: "soon" },
-  ];
+function pilotRow(id: number, name: string, business: string, niche: string, created: number, consent: number | null): DPilot {
   return {
-    seq: 100,
-    pilots, tasks, stages, tools,
-    answers: { 1: { q1: "Рентал", q2: "Анна", q3: "Услуги — запись, выезд, работа на объекте" } },
+    id, name, business, niche, phone: "", goal: "", goal_note: "", plan_title: "", team_note: "",
+    created_at: ago(created), reviewed_at: null, consent_at: consent === null ? null : ago(consent), archived: 0, invite: `demo-${id}`,
+  };
+}
+
+function task(id: number, pilot_id: number, title: string, due: number | null, points: number, done: number | null, extra: Partial<DTask> = {}): DTask {
+  return {
+    id, pilot_id, title, description: "", due_date: due === null ? null : day(due), points,
+    done_at: done === null ? null : ago(done), goal_id: null, status: "accepted", decline_reason: "", decided_at: null, sort_order: 0, ...extra,
+  };
+}
+
+function seed(): State {
+  const s: State = {
+    seq: 1000,
+    pilots: [
+      pilotRow(1, "Евгений", "Цех №4", "Изделия из дерева", 3, 1),
+      pilotRow(2, "Анна", "Рентал", "Управление арендой", 40, 20),
+      pilotRow(3, "Ольга", "Студия «Лак»", "Маникюр", 2, null),
+    ],
+    goals: [],
+    tasks: [
+      task(1, 1, "Познакомиться с командой", null, 100, 1),
+      task(2, 2, "Познакомиться с командой", null, 150, 30),
+      task(3, 2, "Загрузить фото 6 объектов", 1, 50, null),
+      task(4, 2, "Создать бота в MAX", 7, 80, null),
+      task(5, 2, "Написать 3 отзыва клиентов", -4, 50, 5),
+    ],
+    stages: [],
+    tools: [
+      { id: 1, pilot_id: 1, kind: "site", title: "Сайт", subtitle: "workshop4.ru", url: "https://workshop4.ru", admin_url: "https://workshop4.ru/admin", status: "works" },
+      { id: 2, pilot_id: 1, kind: "bot_max", title: "Магазин в MAX", subtitle: "Каталог и заявки", url: "", admin_url: "", status: "works" },
+      { id: 3, pilot_id: 1, kind: "smm", title: "Автопостинг ВК + MAX", subtitle: "По контент-плану", url: "", admin_url: "", status: "soon" },
+      { id: 4, pilot_id: 2, kind: "site", title: "Сайт", subtitle: "myrenthub.ru", url: "https://myrenthub.ru", admin_url: "https://myrenthub.ru/admin", status: "works" },
+    ],
+    answers: { 1: { q1: "Цех №4", q3: "Товары — изделия, которые можно заказать и получить" } },
     files: [],
   };
+  importInto(s, 1, tseh4 as StrategyImport);
+  return s;
+}
+
+/** Та же логика, что apps/api/src/strategy.ts → importStrategy */
+function importInto(s: State, pilotId: number, st: StrategyImport) {
+  const base = Math.max(0, ...s.goals.filter((g) => g.pilot_id === pilotId).map((g) => g.sort_order));
+  st.goals.forEach((g, i) => {
+    const gid = s.seq++;
+    s.goals.push({ id: gid, pilot_id: pilotId, sort_order: base + i + 1, title: g.title, description: g.description || "", status: "proposed", decline_reason: "", decided_at: null });
+    (g.tasks || []).forEach((t, j) =>
+      s.tasks.push(task(s.seq++, pilotId, t.title, null, t.points ?? 50, null, {
+        description: t.description || "", due_date: t.dueDate || null, goal_id: gid, status: "proposed", sort_order: j,
+      })),
+    );
+  });
+  const p = s.pilots.find((x) => x.id === pilotId)!;
+  if (st.goal !== undefined) p.goal = st.goal;
+  if (st.goalNote !== undefined) p.goal_note = st.goalNote;
+  if (st.planTitle !== undefined) p.plan_title = st.planTitle;
+  if (st.teamNote !== undefined) p.team_note = st.teamNote;
+  if (st.stages) {
+    s.stages = s.stages.filter((x) => x.pilot_id !== pilotId);
+    st.stages.forEach((x) => s.stages.push({ id: s.seq++, pilot_id: pilotId, title: x.title, description: x.description || "", status: (x.status || "next") as StageRow["status"] }));
+  }
+  return { goals: st.goals.length, tasks: st.goals.reduce((n, g) => n + (g.tasks?.length || 0), 0) };
 }
 
 let state: State = load();
@@ -102,33 +145,20 @@ function fail(message: string, status = 400): never {
   throw e;
 }
 
-const pub = (t: DTask) => ({
-  id: t.id, title: t.title, description: t.description, dueDate: t.due_date, points: t.points,
-  earned: taskPoints(t), doneAt: t.done_at, overdue: isOverdue(t),
-});
-
-function overview(p: DPilot) {
-  const tasks = state.tasks
-    .filter((t) => t.pilot_id === p.id)
-    .sort((a, b) => Number(!!a.done_at) - Number(!!b.done_at) || (a.due_date || "9999").localeCompare(b.due_date || "9999") || a.id - b.id);
-  const survey = surveyProgress(state.answers[p.id] || {});
-  return {
-    pilot: { id: p.id, name: p.name, business: p.business, niche: p.niche, goal: p.goal, goalNote: p.goal_note, planTitle: p.plan_title, teamNote: p.team_note, createdAt: p.created_at },
-    game: gameState(tasks, survey.complete, SURVEY_POINTS, p.created_at),
-    survey: { ...survey, points: SURVEY_POINTS },
-    tasks: tasks.map(pub),
-    stages: state.stages.filter((s) => s.pilot_id === p.id).map(({ id, title, description, status }) => ({ id, title, description, status })),
-    tools: state.tools.filter((t) => t.pilot_id === p.id).map((t) => ({ id: t.id, kind: t.kind, title: t.title, subtitle: t.subtitle, url: t.url, adminUrl: t.admin_url, status: t.status })),
-  };
-}
+const mine = <T extends { pilot_id: number }>(list: T[], id: number) => list.filter((x) => x.pilot_id === id);
+const gmap = (id: number) => new Map(mine(state.goals, id).map((g) => [g.id, g as GoalRow]));
+const overview = (p: DPilot) =>
+  buildOverview(p, mine(state.goals, p.id), mine(state.tasks, p.id), mine(state.stages, p.id), mine(state.tools, p.id), state.answers[p.id] || {});
 
 function filesFor(pilotId: number) {
-  return Object.fromEntries(state.files.filter((f) => f.pilot_id === pilotId).map((f) => [f.id, { id: f.id, name: f.name, mime: f.mime, size: f.size, url: f.url }]));
+  return Object.fromEntries(mine(state.files, pilotId).map((f) => [f.id, { id: f.id, name: f.name, mime: f.mime, size: f.size, url: f.url }]));
 }
 
 const pilot = (id: number) => state.pilots.find((p) => p.id === id && !p.archived) || fail("Пилот не найден", 404);
 const str = (v: unknown, max = 2000) => String(v ?? "").trim().slice(0, max);
-const ME = 1; // в демо пилот — всегда «Рентал»
+const ME = 1; // в демо пилот — «Цех №4»
+const setStatus = (x: { status: Status; decline_reason: string; decided_at: string | null }, status: Status, reason = "") =>
+  Object.assign(x, { status, decline_reason: reason, decided_at: status === "proposed" ? null : now() });
 
 export async function demoApi(path: string, method: string, json: unknown, body: unknown): Promise<unknown> {
   await new Promise((r) => setTimeout(r, 120));
@@ -136,16 +166,49 @@ export async function demoApi(path: string, method: string, json: unknown, body:
   const m = (re: RegExp) => path.match(re);
   let r: RegExpMatchArray | null;
 
-  if (path.startsWith("/api/auth/invite/")) return method === "GET" ? { name: "Анна", business: "Рентал" } : { token: "demo", role: "pilot" };
+  if (path.startsWith("/api/auth/invite/")) return method === "GET" ? { name: "Евгений", business: "Цех №4" } : { token: "demo", role: "pilot" };
   if (path === "/api/auth/team") return { token: "demo", role: "team" };
   if (path === "/api/auth/logout") return { ok: true };
 
+  // ——— пилот ———
   if (path === "/api/me") return overview(pilot(ME));
   if ((r = m(/^\/api\/tasks\/(\d+)\/done$/))) {
-    const t = state.tasks.find((x) => x.id === Number(r![1]) && x.pilot_id === ME) || fail("Задача не найдена", 404);
+    const t = state.tasks.find((x) => x.id === Number(r![1]) && x.pilot_id === ME && x.status === "accepted") || fail("Задача не найдена", 404);
     t.done_at = b.done === false ? null : t.done_at || now();
     persist();
-    return { task: pub(t) };
+    return { task: publicTask(t, gmap(ME)) };
+  }
+  if (path === "/api/review" && method === "GET") return buildReview(mine(state.goals, ME), mine(state.tasks, ME));
+  if (path === "/api/review" && method === "POST") {
+    const changes = applyDecisions(mine(state.goals, ME), mine(state.tasks, ME), b);
+    for (const c of changes) {
+      const x = (c.kind === "goal" ? state.goals : state.tasks).find((y) => y.id === c.id && y.pilot_id === ME);
+      if (x) setStatus(x, c.status, c.reason);
+    }
+    const left = buildReview(mine(state.goals, ME), mine(state.tasks, ME));
+    const p = pilot(ME);
+    if (!left.goals.length && !left.tasks.length && !p.reviewed_at) p.reviewed_at = now();
+    persist();
+    return { changed: changes.length };
+  }
+  if ((r = m(/^\/api\/archive\/(goal|task)\/(\d+)\/restore$/))) {
+    const id = Number(r[2]);
+    if (r[1] === "goal") {
+      const g = state.goals.find((x) => x.id === id && x.pilot_id === ME && x.status === "declined");
+      if (g) {
+        setStatus(g, "accepted");
+        state.tasks.filter((t) => t.goal_id === id && t.status === "declined").forEach((t) => setStatus(t, "accepted"));
+      }
+    } else {
+      const t = state.tasks.find((x) => x.id === id && x.pilot_id === ME && x.status === "declined");
+      if (t) {
+        setStatus(t, "accepted");
+        const g = state.goals.find((x) => x.id === t.goal_id && x.status === "declined");
+        if (g) setStatus(g, "accepted");
+      }
+    }
+    persist();
+    return { ok: true };
   }
   if (path === "/api/survey" && method === "GET") {
     return { title: SURVEY_TITLE, intro: SURVEY_INTRO, points: SURVEY_POINTS, sections: SURVEY, answers: state.answers[ME] || {}, files: filesFor(ME) };
@@ -162,54 +225,79 @@ export async function demoApi(path: string, method: string, json: unknown, body:
   }
   if (path === "/api/files") {
     const files = body instanceof FormData ? (body.getAll("files") as File[]) : [];
-    const out = files.map((f) => {
-      const file: DFile = { id: `demo-${state.seq++}`, pilot_id: ME, name: f.name, mime: f.type || "application/octet-stream", size: f.size, url: URL.createObjectURL(f) };
-      state.files.push(file);
-      return { id: file.id, name: file.name, mime: file.mime, size: file.size, url: file.url };
-    });
-    return { files: out };
+    return {
+      files: files.map((f) => {
+        const file: DFile = { id: `demo-${state.seq++}`, pilot_id: ME, name: f.name, mime: f.type || "application/octet-stream", size: f.size, url: URL.createObjectURL(f) };
+        state.files.push(file);
+        return { id: file.id, name: file.name, mime: file.mime, size: file.size, url: file.url };
+      }),
+    };
   }
 
+  // ——— команда ———
   if (path === "/api/team/pilots" && method === "GET") {
     return {
       pilots: state.pilots.filter((p) => !p.archived).map((p) => {
         const o = overview(p);
-        const open = state.tasks.filter((t) => t.pilot_id === p.id && !t.done_at).sort((x, y) => (x.due_date || "9999").localeCompare(y.due_date || "9999"));
-        const nearest = open.find((t) => t.due_date);
+        const open = o.tasks.filter((t) => !t.doneAt);
+        const nearest = open.find((t) => t.dueDate);
         return {
           id: p.id, name: p.name, business: p.business, niche: p.niche,
-          stage: state.stages.find((s) => s.pilot_id === p.id && s.status === "current")?.title || "",
+          stage: mine(state.stages, p.id).find((s) => s.status === "current")?.title || "",
           floor: o.game.floor, points: o.game.points,
           tasksDone: o.tasks.filter((t) => t.doneAt).length, tasksTotal: o.tasks.length,
-          overdue: open.filter((t) => isOverdue(t)).length,
-          nearest: nearest ? { title: nearest.title, dueDate: nearest.due_date, overdue: isOverdue(nearest) } : null,
+          overdue: open.filter((t) => t.overdue).length,
+          nearest: nearest ? { title: nearest.title, dueDate: nearest.dueDate, overdue: nearest.overdue } : null,
           survey: o.survey, tools: o.tools.filter((t) => t.status !== "soon").map((t) => t.title), joined: !!p.consent_at,
+          review: o.review.pending, archived: o.archive.goals.length + o.archive.tasks.length,
         };
       }),
     };
   }
   if (path === "/api/team/pilots" && method === "POST") {
     const name = str(b.name, 100) || fail("Укажите имя пилота");
-    const id = state.seq++;
-    state.pilots.push({ id, name, business: str(b.business), niche: str(b.niche), phone: str(b.phone), goal: "", goal_note: "", plan_title: "", team_note: "", consent_at: null, archived: 0, created_at: now(), invite: `demo-${id}` });
+    const p = pilotRow(state.seq++, name, str(b.business), str(b.niche), 0, null);
+    state.pilots.push(p);
     persist();
-    return { id, inviteUrl: `https://lift.example.ru/invite/demo-${id}` };
+    return { id: p.id, inviteUrl: `https://lift.myrenthub.ru/invite/${p.invite}` };
   }
   if ((r = m(/^\/api\/team\/pilots\/(\d+)$/))) {
     const p = pilot(Number(r[1]));
     if (method === "PUT") {
-      Object.assign(p, { name: str(b.name, 100) || p.name, business: str(b.business), niche: str(b.niche), phone: str(b.phone), goal: str(b.goal), goal_note: str(b.goalNote), plan_title: str(b.planTitle), team_note: str(b.teamNote) });
+      Object.assign(p, {
+        name: str(b.name, 100) || p.name, business: str(b.business), niche: str(b.niche), phone: str(b.phone),
+        goal: str(b.goal), goal_note: str(b.goalNote), plan_title: str(b.planTitle), team_note: str(b.teamNote),
+      });
       persist();
       return { ok: true };
     }
     const answers = state.answers[p.id] || {};
-    return { ...overview(p), profile: { phone: p.phone, consentAt: p.consent_at, inviteUrl: `https://lift.example.ru/invite/${p.invite}` }, surveySections: SURVEY, answers, files: filesFor(p.id), surveyProgress: surveyProgress(answers) };
+    const g = gmap(p.id);
+    const tasks = mine(state.tasks, p.id).sort((a, c) => a.sort_order - c.sort_order || a.id - c.id);
+    return {
+      ...overview(p),
+      allGoals: mine(state.goals, p.id).sort((a, c) => a.sort_order - c.sort_order).map((x) => ({
+        id: x.id, title: x.title, description: x.description, status: x.status, declineReason: x.decline_reason,
+        tasks: tasks.filter((t) => t.goal_id === x.id).map((t) => publicTask(t, g)),
+      })),
+      allTasks: tasks.map((t) => publicTask(t, g)),
+      profile: { phone: p.phone, consentAt: p.consent_at, inviteUrl: `https://lift.myrenthub.ru/invite/${p.invite}` },
+      surveySections: SURVEY, answers, files: filesFor(p.id), surveyProgress: surveyProgress(answers),
+    };
+  }
+  if ((r = m(/^\/api\/team\/pilots\/(\d+)\/strategy$/))) {
+    const p = pilot(Number(r[1]));
+    const parsed = parseStrategy(b.strategy);
+    if (typeof parsed === "string") fail(parsed);
+    const res = importInto(state, p.id, parsed);
+    persist();
+    return res;
   }
   if ((r = m(/^\/api\/team\/pilots\/(\d+)\/invite$/))) {
     const p = pilot(Number(r[1]));
     p.invite = `demo-${state.seq++}`;
     persist();
-    return { inviteUrl: `https://lift.example.ru/invite/${p.invite}` };
+    return { inviteUrl: `https://lift.myrenthub.ru/invite/${p.invite}` };
   }
   if ((r = m(/^\/api\/team\/pilots\/(\d+)\/archive$/))) {
     pilot(Number(r[1])).archived = 1;
@@ -220,7 +308,7 @@ export async function demoApi(path: string, method: string, json: unknown, body:
     const id = pilot(Number(r[1])).id;
     state.stages = state.stages.filter((s) => s.pilot_id !== id);
     for (const s of (b.stages as Record<string, unknown>[]) || []) {
-      if (str(s.title)) state.stages.push({ id: state.seq++, pilot_id: id, title: str(s.title), description: str(s.description), status: (["done", "current", "next"].includes(String(s.status)) ? s.status : "next") as DStage["status"] });
+      if (str(s.title)) state.stages.push({ id: state.seq++, pilot_id: id, title: str(s.title), description: str(s.description), status: (["done", "current", "next"].includes(String(s.status)) ? s.status : "next") as StageRow["status"] });
     }
     persist();
     return { ok: true };
@@ -229,20 +317,52 @@ export async function demoApi(path: string, method: string, json: unknown, body:
     const id = pilot(Number(r[1])).id;
     state.tools = state.tools.filter((t) => t.pilot_id !== id);
     for (const t of (b.tools as Record<string, unknown>[]) || []) {
-      if (str(t.title)) state.tools.push({ id: state.seq++, pilot_id: id, kind: str(t.kind) || "other", title: str(t.title), subtitle: str(t.subtitle), url: str(t.url), admin_url: str(t.adminUrl), status: (["works", "setup", "soon"].includes(String(t.status)) ? t.status : "soon") as DTool["status"] });
+      if (str(t.title)) state.tools.push({ id: state.seq++, pilot_id: id, kind: str(t.kind) || "other", title: str(t.title), subtitle: str(t.subtitle), url: str(t.url), admin_url: str(t.adminUrl), status: (["works", "setup", "soon"].includes(String(t.status)) ? t.status : "soon") as ToolRow["status"] });
     }
     persist();
     return { ok: true };
   }
-  const taskFields = () => ({
-    title: str(b.title, 200) || fail("Укажите задачу"),
-    description: str(b.description, 3000),
-    due_date: /^\d{4}-\d{2}-\d{2}$/.test(str(b.dueDate)) ? str(b.dueDate) : null,
-    points: Number.isFinite(Number(b.points)) ? Math.min(Math.max(Math.round(Number(b.points)), 0), 1000) : 50,
-  });
+  if ((r = m(/^\/api\/team\/goals\/(\d+)$/))) {
+    const id = Number(r[1]);
+    if (method === "DELETE") {
+      state.tasks = state.tasks.filter((t) => t.goal_id !== id);
+      state.goals = state.goals.filter((g) => g.id !== id);
+    } else {
+      const g = state.goals.find((x) => x.id === id) || fail("Цель не найдена", 404);
+      Object.assign(g, { title: str(b.title, 200) || g.title, description: str(b.description, 3000) });
+    }
+    persist();
+    return { ok: true };
+  }
+  if ((r = m(/^\/api\/team\/goals\/(\d+)\/repropose$/))) {
+    const id = Number(r[1]);
+    const g = state.goals.find((x) => x.id === id) || fail("Цель не найдена", 404);
+    setStatus(g, "proposed");
+    state.tasks.filter((t) => t.goal_id === id && t.status === "declined" && !t.done_at).forEach((t) => setStatus(t, "proposed"));
+    persist();
+    return { ok: true };
+  }
+  if ((r = m(/^\/api\/team\/tasks\/(\d+)\/repropose$/))) {
+    const t = state.tasks.find((x) => x.id === Number(r![1])) || fail("Задача не найдена", 404);
+    setStatus(t, "proposed");
+    const g = state.goals.find((x) => x.id === t.goal_id && x.status === "declined");
+    if (g) setStatus(g, "proposed");
+    persist();
+    return { ok: true };
+  }
+  const taskFields = (pilotId: number) => {
+    const goalId = Number(b.goalId) || null;
+    return {
+      title: str(b.title, 200) || fail("Укажите задачу"),
+      description: str(b.description, 3000),
+      due_date: /^\d{4}-\d{2}-\d{2}$/.test(str(b.dueDate)) ? str(b.dueDate) : null,
+      points: Number.isFinite(Number(b.points)) ? Math.min(Math.max(Math.round(Number(b.points)), 0), 1000) : 50,
+      goal_id: goalId && state.goals.some((g) => g.id === goalId && g.pilot_id === pilotId) ? goalId : null,
+    };
+  };
   if ((r = m(/^\/api\/team\/pilots\/(\d+)\/tasks$/))) {
     const id = pilot(Number(r[1])).id;
-    const t = { id: state.seq++, pilot_id: id, done_at: null, ...taskFields() };
+    const t = task(state.seq++, id, "", null, 50, null, { ...taskFields(id), status: b.propose ? "proposed" : "accepted" });
     state.tasks.push(t);
     persist();
     return { id: t.id };
@@ -251,7 +371,7 @@ export async function demoApi(path: string, method: string, json: unknown, body:
     const i = state.tasks.findIndex((t) => t.id === Number(r![1]));
     if (i === -1) fail("Задача не найдена", 404);
     if (method === "DELETE") state.tasks.splice(i, 1);
-    else Object.assign(state.tasks[i], taskFields());
+    else Object.assign(state.tasks[i], taskFields(state.tasks[i].pilot_id));
     persist();
     return { ok: true };
   }

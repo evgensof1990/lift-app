@@ -16,6 +16,8 @@ type Row = {
   overdue: number;
   nearest: { title: string; dueDate: string; overdue: boolean } | null;
   survey: { answered: number; total: number; complete: boolean };
+  review: number;
+  archived: number;
   tools: string[];
   joined: boolean;
 };
@@ -126,7 +128,11 @@ export default function TeamPilots() {
                     <Link to={`/team/pilots/${r.id}`} className="strong plain">{r.business || r.name}</Link>
                     <small className="muted block">{[r.name, r.niche].filter(Boolean).join(" · ")}{r.joined ? "" : " · не входил"}</small>
                   </td>
-                  <td>{r.stage || "—"}</td>
+                  <td>
+                    {r.stage || "—"}
+                    {r.review ? <small className="accent block">ждёт согласования: {r.review}</small> : null}
+                    {r.archived ? <small className="muted block">в архиве: {r.archived}</small> : null}
+                  </td>
                   <td>{r.floor}</td>
                   <td>{r.tasksDone} / {r.tasksTotal}{r.overdue ? <span className="warn"> · {r.overdue} просрочено</span> : null}</td>
                   <td className={r.nearest?.overdue ? "warn strong" : ""}>

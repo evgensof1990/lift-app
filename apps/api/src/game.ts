@@ -1,7 +1,7 @@
 /**
  * Игра «Лифт»: баллы за задачи и анкету поднимают пилота по этажам.
  * - задача сделана в срок (или без срока) — все её баллы, с опозданием — половина;
- * - вся обязательная часть анкеты — SURVEY_POINTS;
+ * - вся обязательная часть анкеты — SURVEY_POINTS, пройденное согласование стратегии — REVIEW_POINTS;
  * - серия — сколько полных недель подряд не было просрочек.
  */
 
@@ -40,9 +40,10 @@ function lastMiss(tasks: Task[], now: number) {
   return last;
 }
 
-export function gameState(tasks: Task[], surveyComplete: boolean, surveyPoints: number, startedAt: string) {
+/** extraPoints — баллы не за задачи: анкета, согласование стратегии */
+export function gameState(tasks: Task[], extraPoints: number, startedAt: string) {
   const now = Date.now();
-  const points = tasks.reduce((s, t) => s + taskPoints(t), 0) + (surveyComplete ? surveyPoints : 0);
+  const points = tasks.reduce((s, t) => s + taskPoints(t), 0) + extraPoints;
   let index = 0;
   while (index + 1 < FLOORS.length && points >= FLOORS[index + 1]) index++;
   const floorStart = FLOORS[index];

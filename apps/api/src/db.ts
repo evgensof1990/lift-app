@@ -82,7 +82,45 @@ CREATE TABLE IF NOT EXISTS files (
   size INTEGER NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS goals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pilot_id INTEGER NOT NULL REFERENCES pilots(id) ON DELETE CASCADE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  -- proposed — ждёт согласования пилотом, accepted — в работе, declined — в архиве
+  status TEXT NOT NULL DEFAULT 'proposed' CHECK (status IN ('proposed', 'accepted', 'declined')),
+  decline_reason TEXT NOT NULL DEFAULT '',
+  decided_at TEXT
+);
 `);
+
+/** Новые колонки в существующих таблицах (база могла быть создана прежней версией) */
+function addColumn(table: string, name: string, ddl: string) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!cols.some((c) => c.name === name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${ddl}`);
+}
+addColumn("tasks", "goal_id", "INTEGER REFERENCES goals(id) ON DELETE SET NULL");
+// задачи, созданные до согласования стратегии, — сразу в работе
+addColumn("tasks", "status", "TEXT NOT NULL DEFAULT 'accepted'");
+addColumn("tasks", "decline_reason", "TEXT NOT NULL DEFAULT ''");
+addColumn("tasks", "decided_at", "TEXT");
+addColumn("tasks", "sort_order", "INTEGER NOT NULL DEFAULT 0");
+addColumn("pilots", "reviewed_at", "TEXT");
+
+export type Status = "proposed" | "accepted" | "declined";
+
+export type Goal = {
+  id: number;
+  pilot_id: number;
+  sort_order: number;
+  title: string;
+  description: string;
+  status: Status;
+  decline_reason: string;
+  decided_at: string | null;
+};
 
 export type Pilot = {
   id: number;
@@ -96,6 +134,7 @@ export type Pilot = {
   team_note: string;
   invite_token: string | null;
   consent_at: string | null;
+  reviewed_at: string | null;
   archived: number;
   created_at: string;
 };
@@ -118,6 +157,11 @@ export type Task = {
   points: number;
   done_at: string | null;
   created_at: string;
+  goal_id: number | null;
+  status: Status;
+  decline_reason: string;
+  decided_at: string | null;
+  sort_order: number;
 };
 
 export type Tool = {

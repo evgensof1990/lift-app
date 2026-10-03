@@ -1,15 +1,17 @@
 /**
  * Игра «Лифт»: баллы за задачи и анкету поднимают пилота по этажам.
  * - задача сделана в срок (или без срока) — все её баллы, с опозданием — половина;
- * - вся обязательная часть анкеты — SURVEY_POINTS;
+ * - вся обязательная часть анкеты — SURVEY_POINTS, пройденное согласование стратегии — REVIEW_POINTS;
  * - серия — сколько полных недель подряд не было просрочек.
  */
-import type { Task } from "./db.js";
 
 /** Сколько баллов нужно, чтобы оказаться на этаже N (индекс = N − 1) */
 export const FLOORS = [0, 150, 400, 750, 1200, 1800, 2500, 3300, 4200, 5200, 6500, 8000];
 
 const DAY = 24 * 60 * 60 * 1000;
+
+/** Поля задачи, нужные игре (строка таблицы tasks) */
+type Task = { due_date: string | null; done_at: string | null; points: number };
 
 /** Конец дня срока (23:59:59) по московскому времени */
 export function dueEnd(due: string) {
@@ -38,9 +40,10 @@ function lastMiss(tasks: Task[], now: number) {
   return last;
 }
 
-export function gameState(tasks: Task[], surveyComplete: boolean, surveyPoints: number, startedAt: string) {
+/** extraPoints — баллы не за задачи: анкета, согласование стратегии */
+export function gameState(tasks: Task[], extraPoints: number, startedAt: string) {
   const now = Date.now();
-  const points = tasks.reduce((s, t) => s + taskPoints(t), 0) + (surveyComplete ? surveyPoints : 0);
+  const points = tasks.reduce((s, t) => s + taskPoints(t), 0) + extraPoints;
   let index = 0;
   while (index + 1 < FLOORS.length && points >= FLOORS[index + 1]) index++;
   const floorStart = FLOORS[index];

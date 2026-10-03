@@ -3,6 +3,7 @@ import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom"
 import { api, ApiError, clearSession, type Overview } from "./api";
 import { IconFlag, IconGrid, IconHome, IconTasks } from "./components/Icons";
 import Home from "./pages/Home";
+import Review from "./pages/Review";
 import Strategy from "./pages/Strategy";
 import Tasks from "./pages/Tasks";
 import Tools from "./pages/Tools";
@@ -58,6 +59,7 @@ export default function PilotShell() {
         <Routes>
           <Route index element={<Home {...ctx} />} />
           <Route path="strategy" element={<Strategy {...ctx} />} />
+          <Route path="review" element={<Review {...ctx} />} />
           <Route path="tasks" element={<Tasks {...ctx} />} />
           <Route path="tools" element={<Tools {...ctx} />} />
           <Route path="*" element={<Navigate to="/" replace />} />

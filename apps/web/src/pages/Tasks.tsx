@@ -57,6 +57,7 @@ export default function Tasks({ data, reload }: PilotCtx) {
                     onChange={() => void toggle(t)}
                   />
                   <span className="task__body">
+                    {t.goalTitle ? <span className="task__goal">{t.goalTitle}</span> : null}
                     <span className="task__title">{t.title}</span>
                     {t.description ? <span className="task__desc">{t.description}</span> : null}
                     <span className="task__meta">

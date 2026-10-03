@@ -231,3 +231,51 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-
   .team-grid { grid-template-columns: minmax(0, 1fr); }
   .team__main { padding: 18px 16px 40px; }
 }
+
+/* Согласование стратегии */
+.card--accent { border-color: var(--violet); background: var(--card-2); }
+.pre { white-space: pre-line; }
+.task__goal { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--violet-text); }
+.review { padding-bottom: 0; }
+.review__bar { display: flex; align-items: center; gap: 8px; margin-left: -6px; }
+.review__footer { position: sticky; bottom: 0; margin: 0 -18px; padding: 12px 18px calc(16px + env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.app__main:has(.review) { padding-bottom: 0; }
+.app:has(.review) .tabbar { display: none; }
+.rv-goal { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.rv-goal--on { border-color: var(--line-2); }
+.rv-goal--off { opacity: 0.75; }
+.rv-goal--off .h2 { text-decoration: line-through; color: var(--dim); }
+.rv-goal__head { display: flex; flex-direction: column; gap: 4px; }
+.rv-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rv-choice button { min-height: 48px; border-radius: 14px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-weight: 800; font-size: 14px; cursor: pointer; }
+.rv-choice button[aria-pressed="true"] { background: var(--violet); border-color: var(--violet); color: #fff; }
+.rv-choice button.skip[aria-pressed="true"] { background: #3a3550; border-color: #3a3550; color: var(--text); }
+.rv-reason { font-size: 14px !important; }
+.rv-tasks summary { cursor: pointer; font-size: 13px; font-weight: 700; color: var(--text-2); padding: 4px 0; }
+.rv-tasks .list { margin-top: 8px; }
+.rv-task { background: var(--bg-2); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.rv-task__main { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
+.rv-task__main input { width: 22px; height: 22px; margin: 0; accent-color: var(--violet); flex: none; }
+.rv-task__body { display: flex; flex-direction: column; gap: 3px; }
+.rv-task__title { font-size: 14px; font-weight: 700; }
+.rv-task__desc { font-size: 13px; color: var(--muted); white-space: pre-line; }
+.rv-task--off .rv-task__title { color: var(--dim); text-decoration: line-through; }
+.goal-card { display: flex; flex-direction: column; gap: 10px; }
+.goal-card__head { display: flex; justify-content: space-between; gap: 12px; }
+.archive summary { cursor: pointer; font-weight: 700; color: var(--text-2); padding: 8px 0; }
+.archive .list { margin-top: 8px; }
+.archive__item { display: flex; align-items: center; gap: 12px; }
+
+/* Панель команды: цели */
+.team-goal summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; cursor: pointer; }
+.team-goal[open] { display: flex; flex-direction: column; gap: 10px; }
+.team-goal--declined { opacity: 0.8; }
+.team-goal__tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.team-goal__tasks li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.pill { padding: 3px 10px; border-radius: 10px; font-size: 12px; font-weight: 700; background: var(--card-2); color: var(--text-2); }
+.pill--proposed { color: var(--warn); }
+.pill--accepted { color: var(--violet-text); }
+.pill--declined { color: var(--dim); }
+.dim { color: var(--dim); text-decoration: line-through; }
+.check { flex-direction: row; align-items: center; gap: 10px; }
+.check input { width: 20px; height: 20px; accent-color: var(--violet); }

@@ -5,6 +5,7 @@ import {
   dueLabel,
   type Answers,
   type FileInfo,
+  type ItemStatus,
   type Overview,
   type Section,
   type StageItem,
@@ -14,7 +15,11 @@ import {
 import FloorCard from "../../components/FloorCard";
 import TeamLayout, { copyText } from "./TeamLayout";
 
+type FullGoal = { id: number; title: string; description: string; status: ItemStatus; declineReason: string; tasks: TaskItem[] };
+
 type Detail = Overview & {
+  allGoals: FullGoal[];
+  allTasks: TaskItem[];
   profile: { phone: string; consentAt: string | null; inviteUrl: string };
   surveySections: Section[];
   answers: Answers;
@@ -180,6 +185,111 @@ const STAGE_TEMPLATE: Omit<StageItem, "id">[] = [
   { title: "Масштаб", description: "Автоматизация, новые направления", status: "next" },
 ];
 
+const STATUS_LABEL: Record<ItemStatus, string> = { proposed: "на согласовании", accepted: "в работе", declined: "в архиве" };
+
+function GoalsPanel({ d, reload }: TabProps) {
+  const [json, setJson] = useState("");
+  const [open, setOpen] = useState(false);
+  const s = useSaver();
+  const act = (url: string, method = "POST") => void s.run(async () => { await api(url, { method }); await reload(); }, "Готово");
+
+  return (
+    <div className="stack">
+      <div className="row-gap">
+        <h2 className="h2">Цели и задачи</h2>
+        <button type="button" className="btn btn--soft" onClick={() => setOpen((v) => !v)}>Импорт стратегии (JSON)</button>
+      </div>
+      {open ? (
+        <div className="card stack">
+          <p className="muted small">
+            Вставьте JSON стратегии или выберите файл. Цели и задачи уйдут пилоту на согласование и добавятся к уже существующим.
+          </p>
+          <input
+            type="file"
+            accept=".json,application/json"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void f.text().then(setJson);
+            }}
+          />
+          <textarea rows={8} value={json} onChange={(e) => setJson(e.target.value)} placeholder='{"goals":[{"title":"…","tasks":[{"title":"…","dueDate":"2026-10-15","points":50}]}]}' />
+          <div className="row-gap">
+            <button
+              type="button"
+              className="btn btn--primary"
+              disabled={!json.trim() || s.busy}
+              onClick={() =>
+                void s.run(async () => {
+                  let strategy: unknown;
+                  try {
+                    strategy = JSON.parse(json);
+                  } catch {
+                    throw new Error("Это не JSON — проверьте, что скопировали файл целиком");
+                  }
+                  const r = await api<{ goals: number; tasks: number }>(`/api/team/pilots/${d.pilot.id}/strategy`, { method: "POST", json: { strategy } });
+                  setJson("");
+                  setOpen(false);
+                  await reload();
+                  return r;
+                }, "Стратегия загружена и отправлена пилоту на согласование")
+              }
+            >
+              Загрузить
+            </button>
+            {s.note}
+          </div>
+        </div>
+      ) : (
+        s.note
+      )}
+      {d.allGoals.length === 0 ? <p className="muted">Целей пока нет — загрузите стратегию.</p> : null}
+      {d.allGoals.map((g) => (
+        <details key={g.id} className={`card team-goal team-goal--${g.status}`}>
+          <summary>
+            <span className="strong">{g.title}</span>
+            <span className={`pill pill--${g.status}`}>{STATUS_LABEL[g.status]}</span>
+            <span className="muted small">
+              {g.tasks.filter((t) => t.status === "accepted").length} в работе · {g.tasks.filter((t) => t.doneAt).length} сделано · {g.tasks.length} всего
+            </span>
+          </summary>
+          {g.declineReason ? <p className="warn small">Пилот: «{g.declineReason}»</p> : null}
+          {g.description ? <p className="muted small pre">{g.description}</p> : null}
+          <ul className="team-goal__tasks">
+            {g.tasks.map((t) => (
+              <li key={t.id}>
+                <span className={t.status === "declined" ? "dim" : ""}>
+                  {t.doneAt ? "✓ " : ""}{t.title}
+                </span>
+                <span className="muted small nowrap">
+                  {t.dueDate ? dueLabel(t.dueDate, !!t.doneAt) + " · " : ""}{STATUS_LABEL[t.status]}
+                  {t.declineReason ? ` · «${t.declineReason}»` : ""}
+                </span>
+                {t.status === "declined" && g.status !== "declined" ? (
+                  <button type="button" className="btn btn--ghost" onClick={() => act(`/api/team/tasks/${t.id}/repropose`)}>Предложить снова</button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          <div className="row-gap">
+            {g.status === "declined" ? (
+              <button type="button" className="btn btn--soft" onClick={() => act(`/api/team/goals/${g.id}/repropose`)}>Предложить снова</button>
+            ) : null}
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => {
+                if (window.confirm(`Удалить цель «${g.title}» вместе с задачами?`)) act(`/api/team/goals/${g.id}`, "DELETE");
+              }}
+            >
+              Удалить цель
+            </button>
+          </div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
 function StrategyTab({ d, reload }: TabProps) {
   const [list, setList] = useState<Omit<StageItem, "id">[]>(
     d.stages.length ? d.stages.map(({ title, description, status }) => ({ title, description, status })) : [],
@@ -196,6 +306,8 @@ function StrategyTab({ d, reload }: TabProps) {
 
   return (
     <div className="stack">
+      <GoalsPanel d={d} reload={reload} />
+      <h2 className="h2">Этапы (таймлайн)</h2>
       {list.length === 0 ? (
         <div className="card stack">
           <p className="muted">Этапов пока нет.</p>
@@ -241,7 +353,7 @@ function StrategyTab({ d, reload }: TabProps) {
   );
 }
 
-const emptyTask = { title: "", description: "", dueDate: "", points: 50 };
+const emptyTask = { title: "", description: "", dueDate: "", points: 50, goalId: 0, propose: false };
 
 function TasksTab({ d, reload }: TabProps) {
   const [form, setForm] = useState(emptyTask);
@@ -250,7 +362,7 @@ function TasksTab({ d, reload }: TabProps) {
 
   function edit(t: TaskItem) {
     setEditId(t.id);
-    setForm({ title: t.title, description: t.description, dueDate: t.dueDate || "", points: t.points });
+    setForm({ title: t.title, description: t.description, dueDate: t.dueDate || "", points: t.points, goalId: t.goalId || 0, propose: false });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -277,6 +389,18 @@ function TasksTab({ d, reload }: TabProps) {
           <input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></label>
         <label className="field"><span>Баллы</span>
           <input type="number" min={0} max={1000} step={10} value={form.points} onChange={(e) => setForm({ ...form, points: Number(e.target.value) })} /></label>
+        <label className="field"><span>Цель</span>
+          <select value={form.goalId} onChange={(e) => setForm({ ...form, goalId: Number(e.target.value) })}>
+            <option value={0}>Без цели</option>
+            {d.allGoals.filter((g) => g.status !== "declined").map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}
+          </select>
+        </label>
+        {editId ? null : (
+          <label className="check field">
+            <input type="checkbox" checked={form.propose} onChange={(e) => setForm({ ...form, propose: e.target.checked })} />
+            <span>Отправить пилоту на согласование (иначе — сразу в работу)</span>
+          </label>
+        )}
         <div className="wide row-gap">
           <button className="btn btn--primary" type="submit" disabled={s.busy}>{editId ? "Сохранить" : "Добавить задачу"}</button>
           {editId ? <button type="button" className="btn btn--ghost" onClick={() => { setEditId(null); setForm(emptyTask); }}>Отмена</button> : null}
@@ -288,15 +412,20 @@ function TasksTab({ d, reload }: TabProps) {
         <table className="table">
           <thead><tr><th>Задача</th><th>Срок</th><th>Баллы</th><th>Статус</th><th /></tr></thead>
           <tbody>
-            {d.tasks.length === 0 ? (
+            {d.allTasks.length === 0 ? (
               <tr><td colSpan={5} className="muted">Задач пока нет.</td></tr>
             ) : (
-              d.tasks.map((t) => (
+              d.allTasks.map((t) => (
                 <tr key={t.id}>
-                  <td><span className="strong">{t.title}</span>{t.description ? <small className="muted block">{t.description}</small> : null}</td>
+                  <td>
+                    {t.goalTitle ? <small className="task__goal block">{t.goalTitle}</small> : null}
+                    <span className="strong">{t.title}</span>
+                  </td>
                   <td className={t.overdue ? "warn strong" : ""}>{dueLabel(t.dueDate, !!t.doneAt) || "—"}</td>
                   <td>{t.doneAt ? `${t.earned} из ${t.points}` : t.points}</td>
-                  <td>{t.doneAt ? `сделано ${t.doneAt.slice(0, 10)}` : t.overdue ? "просрочено" : "в работе"}</td>
+                  <td>
+                    {t.status !== "accepted" ? STATUS_LABEL[t.status] : t.doneAt ? `сделано ${t.doneAt.slice(0, 10)}` : t.overdue ? "просрочено" : "в работе"}
+                  </td>
                   <td className="nowrap">
                     <button type="button" className="btn btn--ghost" onClick={() => edit(t)}>Изменить</button>
                     <button

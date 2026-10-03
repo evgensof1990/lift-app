@@ -39,7 +39,18 @@ export class ApiError extends Error {
   }
 }
 
+/** Демо-сборка (VITE_DEMO=1): без сервера, данные-примеры в телефоне */
+export const DEMO = import.meta.env.VITE_DEMO === "1";
+
 export async function api<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
+  if (DEMO) {
+    const { demoApi } = await import("./demo");
+    try {
+      return (await demoApi(path, init.method || "GET", init.json, init.body)) as T;
+    } catch (e) {
+      throw new ApiError((e as Error).message, (e as { status?: number }).status || 400);
+    }
+  }
   const headers = new Headers(init.headers);
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -64,6 +75,8 @@ export type Game = {
   topFloor: number;
 };
 
+export type ItemStatus = "proposed" | "accepted" | "declined";
+
 export type TaskItem = {
   id: number;
   title: string;
@@ -73,6 +86,25 @@ export type TaskItem = {
   earned: number;
   doneAt: string | null;
   overdue: boolean;
+  status: ItemStatus;
+  declineReason: string;
+  goalId: number | null;
+  goalTitle: string;
+};
+
+export type GoalItem = {
+  id: number;
+  title: string;
+  description: string;
+  status: ItemStatus;
+  declineReason: string;
+  tasksDone: number;
+  tasksTotal: number;
+};
+
+export type ReviewData = {
+  goals: { id: number; title: string; description: string; status: ItemStatus; tasks: TaskItem[] }[];
+  tasks: TaskItem[];
 };
 
 export type StageItem = { id: number; title: string; description: string; status: "done" | "current" | "next" };
@@ -107,10 +139,14 @@ export type Overview = {
     planTitle: string;
     teamNote: string;
     createdAt: string;
+    reviewedAt: string | null;
   };
   game: Game;
   survey: SurveyProgress;
   tasks: TaskItem[];
+  goals: GoalItem[];
+  review: { pending: number; goals: number; tasks: number; points: number; reviewed: boolean };
+  archive: { goals: (GoalItem & { tasks: TaskItem[] })[]; tasks: TaskItem[] };
   stages: StageItem[];
   tools: ToolItem[];
 };
@@ -152,6 +188,19 @@ export function isSoon(due: string | null) {
   today.setHours(0, 0, 0, 0);
   return (new Date(y, m - 1, d).getTime() - today.getTime()) / 86400000 <= 1;
 }
+
+/** plural(5, ["цель", "цели", "целей"]) → «целей» */
+export function plural(n: number, forms: [string, string, string]) {
+  const a = Math.abs(n) % 100;
+  const b = a % 10;
+  if (a > 10 && a < 20) return forms[2];
+  if (b === 1) return forms[0];
+  if (b >= 2 && b <= 4) return forms[1];
+  return forms[2];
+}
+
+export const GOALS: [string, string, string] = ["цель", "цели", "целей"];
+export const TASKS: [string, string, string] = ["задача", "задачи", "задач"];
 
 export function pointsWord(n: number) {
   const a = Math.abs(n) % 100;

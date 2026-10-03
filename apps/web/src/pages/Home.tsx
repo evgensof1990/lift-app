@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
-import { dueLabel, isSoon, pointsWord } from "../api";
+import { dueLabel, GOALS, isSoon, plural, pointsWord, TASKS } from "../api";
 import FloorCard from "../components/FloorCard";
-import { IconForm } from "../components/Icons";
+import { IconFlag, IconForm } from "../components/Icons";
 import { Logo } from "../components/Logo";
 import type { PilotCtx } from "../PilotShell";
 
@@ -18,6 +18,20 @@ export default function Home({ data }: PilotCtx) {
         {pilot.business ? <p className="muted">{pilot.business}</p> : null}
         <h1 className="h1">Привет, {pilot.name}!</h1>
       </div>
+
+      {data.review.pending ? (
+        <Link to="/review" className="card card--link card--accent">
+          <span className="tile"><IconFlag /></span>
+          <span className="card__text">
+            <strong>Стратегия на согласование</strong>
+            <small>
+              {data.review.goals ? `${data.review.goals} ${plural(data.review.goals, GOALS)}, ${data.review.tasks} ${plural(data.review.tasks, TASKS)}` : `${data.review.tasks} ${plural(data.review.tasks, TASKS)}`} — выберите, что берёте
+              {!data.review.reviewed ? ` · +${data.review.points} ${pointsWord(data.review.points)}` : ""}
+            </small>
+          </span>
+          <span className="card__action">Открыть</span>
+        </Link>
+      ) : null}
 
       <FloorCard game={game} />
 

@@ -3,6 +3,7 @@
 #   bash scripts/server-setup.sh lift.example.ru
 # Что делает: свой Node.js 22 в .tools/node, .env с паролем команды, сборка,
 # служба lift-app, автовыкладка из GitHub (каждые 2 минуты), ночной бэкап 03:50, nginx + HTTPS.
+# Повторный запуск безопасен: .env и nginx не меняются, службы и сертификаты MAX обновляются.
 # Соседей («Цех №4», конструктор магазинов) не трогает: свои службы, свой файл nginx, свой порт.
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
@@ -61,6 +62,19 @@ npm ci --no-audit --no-fund
 npm run build
 echo "✓ Сборка готова"
 
+# 3б. Сертификаты Минцифры для MAX API (автопостинг в каналы MAX). Копия у соседей — их файлы не меняются.
+mkdir -p "$BASE/deploy/certs"
+if [ ! -f "$BASE/deploy/certs/max-ca.pem" ]; then
+  for src in "$SHOPC_DIR/deploy/certs/max-ca.pem" "$CEH_DIR/deploy/certs/max-ca.pem"; do
+    if [ -f "$src" ]; then
+      cp "$src" "$BASE/deploy/certs/max-ca.pem"
+      echo "✓ Сертификаты MAX скопированы ($src не тронут)"
+      break
+    fi
+  done
+fi
+[ -f "$BASE/deploy/certs/max-ca.pem" ] || echo "⚠ Нет deploy/certs/max-ca.pem — публикация в MAX работать не будет"
+
 # 4. Службы
 tmp_unit="$(mktemp)"
 cat > "$tmp_unit" <<UNIT
@@ -74,6 +88,7 @@ Type=simple
 User=$(id -un)
 WorkingDirectory=$BASE
 Environment=NODE_ENV=production
+Environment=NODE_EXTRA_CA_CERTS=$BASE/deploy/certs/max-ca.pem
 ExecStart=$NODE_BIN/node $BASE/apps/api/dist/index.js
 Restart=on-failure
 RestartSec=3

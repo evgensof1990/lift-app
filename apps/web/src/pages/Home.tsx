@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { dueLabel, GOALS, isSoon, plural, pointsWord, TASKS } from "../api";
 import FloorCard from "../components/FloorCard";
-import { IconFlag, IconForm } from "../components/Icons";
+import { IconFlag, IconForm, IconMegaphone } from "../components/Icons";
 import { Logo } from "../components/Logo";
 import type { PilotCtx } from "../PilotShell";
 
@@ -28,6 +28,17 @@ export default function Home({ data }: PilotCtx) {
               {data.review.goals ? `${data.review.goals} ${plural(data.review.goals, GOALS)}, ${data.review.tasks} ${plural(data.review.tasks, TASKS)}` : `${data.review.tasks} ${plural(data.review.tasks, TASKS)}`} — выберите, что берёте
               {!data.review.reviewed ? ` · +${data.review.points} ${pointsWord(data.review.points)}` : ""}
             </small>
+          </span>
+          <span className="card__action">Открыть</span>
+        </Link>
+      ) : null}
+
+      {data.postsWaiting ? (
+        <Link to="/posts" className="card card--link card--accent">
+          <span className="tile"><IconMegaphone /></span>
+          <span className="card__text">
+            <strong>Пора опубликовать в Instagram</strong>
+            <small>Готово постов: {data.postsWaiting} — одно касание</small>
           </span>
           <span className="card__action">Открыть</span>
         </Link>

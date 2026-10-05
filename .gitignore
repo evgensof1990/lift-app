@@ -10,3 +10,4 @@ apps/web/android/build/
 apps/web/android/local.properties
 *.keystore
 *.jks
+deploy/certs/

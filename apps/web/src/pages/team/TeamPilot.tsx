@@ -14,6 +14,8 @@ import {
 } from "../../api";
 import FloorCard from "../../components/FloorCard";
 import TeamLayout, { copyText } from "./TeamLayout";
+import ChannelsPanel from "./ChannelsPanel";
+import PostsBoard from "../../components/Posts";
 
 type FullGoal = { id: number; title: string; description: string; status: ItemStatus; declineReason: string; tasks: TaskItem[] };
 
@@ -26,11 +28,12 @@ type Detail = Overview & {
   files: Record<string, FileInfo>;
 };
 
-type Tab = "profile" | "strategy" | "tasks" | "tools" | "survey";
+type Tab = "profile" | "strategy" | "tasks" | "posts" | "tools" | "survey";
 const TABS: [Tab, string][] = [
   ["profile", "Профиль и цель"],
   ["strategy", "Стратегия"],
   ["tasks", "Задачи"],
+  ["posts", "Посты"],
   ["tools", "Инструменты"],
   ["survey", "Анкета"],
 ];
@@ -73,6 +76,7 @@ export default function TeamPilot() {
       {tab === "profile" ? <ProfileTab d={d} reload={load} /> : null}
       {tab === "strategy" ? <StrategyTab d={d} reload={load} /> : null}
       {tab === "tasks" ? <TasksTab d={d} reload={load} /> : null}
+      {tab === "posts" ? <PostsTab pilotId={d.pilot.id} /> : null}
       {tab === "tools" ? <ToolsTab d={d} reload={load} /> : null}
       {tab === "survey" ? <SurveyTab d={d} /> : null}
     </TeamLayout>
@@ -557,6 +561,24 @@ function SurveyTab({ d }: { d: Detail }) {
           })}
         </section>
       ))}
+    </div>
+  );
+}
+
+function PostsTab({ pilotId }: { pilotId: number }) {
+  const [rev, setRev] = useState(0);
+  const urls = {
+    list: `/api/team/pilots/${pilotId}/posts`,
+    create: `/api/team/pilots/${pilotId}/posts`,
+    item: (id: number) => `/api/team/posts/${id}`,
+    files: `/api/team/pilots/${pilotId}/files`,
+  };
+  return (
+    <div className="team-grid">
+      <div key={rev}>
+        <PostsBoard urls={urls} emptyChannelsHint="Подключите соцсети справа — после этого посты можно публиковать." />
+      </div>
+      <ChannelsPanel pilotId={pilotId} onChange={() => setRev((r) => r + 1)} />
     </div>
   );
 }

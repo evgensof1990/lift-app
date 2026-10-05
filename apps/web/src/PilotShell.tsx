@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { api, ApiError, clearSession, type Overview } from "./api";
-import { IconFlag, IconGrid, IconHome, IconTasks } from "./components/Icons";
+import { IconFlag, IconGrid, IconHome, IconMegaphone, IconTasks } from "./components/Icons";
 import Home from "./pages/Home";
+import Posts from "./pages/Posts";
 import Review from "./pages/Review";
 import Strategy from "./pages/Strategy";
 import Tasks from "./pages/Tasks";
@@ -61,6 +62,7 @@ export default function PilotShell() {
           <Route path="strategy" element={<Strategy {...ctx} />} />
           <Route path="review" element={<Review {...ctx} />} />
           <Route path="tasks" element={<Tasks {...ctx} />} />
+          <Route path="posts" element={<Posts />} />
           <Route path="tools" element={<Tools {...ctx} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
@@ -69,6 +71,7 @@ export default function PilotShell() {
         <NavLink to="/" end className="tabbar__item"><IconHome />Главная</NavLink>
         <NavLink to="/strategy" className="tabbar__item"><IconFlag />Стратегия</NavLink>
         <NavLink to="/tasks" className="tabbar__item"><IconTasks />Задачи</NavLink>
+        <NavLink to="/posts" className="tabbar__item"><IconMegaphone />Посты</NavLink>
         <NavLink to="/tools" className="tabbar__item"><IconGrid />Инструменты</NavLink>
       </nav>
     </div>

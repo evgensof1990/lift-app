@@ -7,6 +7,9 @@ import { getAnswers, getPilot, listGoals, listTasks, pilotOverview } from "../pi
 import { isOverdue } from "../game.js";
 import { parseStrategy, publicTask } from "../model.js";
 import { importStrategy } from "../strategy.js";
+import { registerUploads, upload } from "../answers.js";
+import { channelView, checkChannel, deletePost, listChannels, listPosts, markManual, retryPost, saveChannel, savePost } from "../posting.js";
+import type { Channel, Post } from "../db.js";
 import { SURVEY, surveyProgress } from "../survey.js";
 
 export const teamRouter = Router();
@@ -295,4 +298,89 @@ teamRouter.post("/tasks/:id/repropose", (req, res) => {
     db.prepare("UPDATE goals SET status = 'proposed', decline_reason = '', decided_at = NULL WHERE id = ? AND status = 'declined'").run(t.goal_id);
   }
   res.json({ ok: true });
+});
+
+/* ——— автопостинг: каналы и посты пилота ——— */
+
+teamRouter.get("/pilots/:id/posts", (req, res) => {
+  const p = pilotOr404(Number(req.params.id), res);
+  if (!p) return;
+  res.json({ posts: listPosts(p.id), channels: listChannels(p.id).map(channelView) });
+});
+
+teamRouter.post("/pilots/:id/channels", (req, res) => {
+  const p = pilotOr404(Number(req.params.id), res);
+  if (!p) return;
+  const r = saveChannel(p.id, req.body || {});
+  res.status("error" in r ? 400 : 200).json(r);
+});
+
+function channelOr404(id: number, res: Response) {
+  const c = db.prepare("SELECT * FROM channels WHERE id = ?").get(id) as Channel | undefined;
+  if (!c) res.status(404).json({ error: "Канал не найден" });
+  return c;
+}
+
+teamRouter.put("/channels/:id", (req, res) => {
+  const c = channelOr404(Number(req.params.id), res);
+  if (!c) return;
+  const r = saveChannel(c.pilot_id, req.body || {}, c.id);
+  res.status("error" in r ? 400 : 200).json(r);
+});
+
+teamRouter.delete("/channels/:id", (req, res) => {
+  db.prepare("DELETE FROM channels WHERE id = ?").run(Number(req.params.id));
+  res.json({ ok: true });
+});
+
+/** Проверить ключи: ВК — видит ли сообщество, MAX — бот и канал */
+teamRouter.post("/channels/:id/check", async (req, res) => {
+  const c = channelOr404(Number(req.params.id), res);
+  if (!c) return;
+  try {
+    res.json({ ok: true, info: await checkChannel(c) });
+  } catch (e) {
+    res.json({ ok: false, error: (e as Error).message });
+  }
+});
+
+teamRouter.post("/pilots/:id/files", upload.array("files", 20), (req, res) => {
+  const p = pilotOr404(Number(req.params.id), res);
+  if (!p) return;
+  res.json({ files: registerUploads(p.id, (req.files as Express.Multer.File[]) || []) });
+});
+
+teamRouter.post("/pilots/:id/posts", (req, res) => {
+  const p = pilotOr404(Number(req.params.id), res);
+  if (!p) return;
+  const r = savePost(p.id, req.body || {}, "team");
+  res.status("error" in r ? 400 : 200).json(r);
+});
+
+function postPilot(id: number) {
+  return (db.prepare("SELECT pilot_id FROM posts WHERE id = ?").get(id) as Pick<Post, "pilot_id"> | undefined)?.pilot_id ?? 0;
+}
+
+teamRouter.put("/posts/:id", (req, res) => {
+  const id = Number(req.params.id);
+  const r = savePost(postPilot(id), req.body || {}, "team", id);
+  res.status("error" in r ? 400 : 200).json(r);
+});
+
+teamRouter.delete("/posts/:id", (req, res) => {
+  const id = Number(req.params.id);
+  const r = deletePost(postPilot(id), id);
+  res.status("error" in r ? 400 : 200).json(r);
+});
+
+teamRouter.post("/posts/:id/retry", (req, res) => {
+  const id = Number(req.params.id);
+  const r = retryPost(postPilot(id), id);
+  res.status("error" in r ? 400 : 200).json(r);
+});
+
+teamRouter.post("/posts/:id/targets/:channelId/done", (req, res) => {
+  const id = Number(req.params.id);
+  const r = markManual(postPilot(id), id, Number(req.params.channelId), req.body?.url);
+  res.status("error" in r ? 400 : 200).json(r);
 });

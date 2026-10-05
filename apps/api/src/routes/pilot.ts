@@ -3,6 +3,7 @@ import { requirePilot } from "../auth.js";
 import { db, type Task } from "../db.js";
 import { filesInfo, saveAnswers, upload, registerUploads } from "../answers.js";
 import { applyChanges } from "../strategy.js";
+import { channelView, deletePost, listChannels, listPosts, markManual, retryPost, savePost, waitingCount } from "../posting.js";
 import { applyDecisions, publicTask, type Decisions } from "../model.js";
 import { getAnswers, getPilot, listGoals, listTasks, pilotOverview, pilotReview } from "../pilot-data.js";
 import { SURVEY, SURVEY_INTRO, SURVEY_POINTS, SURVEY_TITLE } from "../survey.js";
@@ -16,7 +17,7 @@ pilotRouter.get("/me", (req, res) => {
     res.status(404).json({ error: "Пилот не найден" });
     return;
   }
-  res.json(pilotOverview(pilot));
+  res.json({ ...pilotOverview(pilot), postsWaiting: waitingCount(pilot.id) });
 });
 
 /** Пилот отмечает задачу сделанной или снимает отметку (только задачи в работе) */
@@ -108,4 +109,37 @@ pilotRouter.put("/survey", (req, res) => {
 pilotRouter.post("/files", upload.array("files", 20), (req, res) => {
   const files = registerUploads(req.session!.pilotId!, (req.files as Express.Multer.File[]) || []);
   res.json({ files });
+});
+
+/* ——— посты (автопостинг) ——— */
+
+pilotRouter.get("/posts", (req, res) => {
+  const pilotId = req.session!.pilotId!;
+  res.json({ posts: listPosts(pilotId), channels: listChannels(pilotId).filter((c) => c.enabled).map(channelView) });
+});
+
+pilotRouter.post("/posts", (req, res) => {
+  const r = savePost(req.session!.pilotId!, req.body || {}, "pilot");
+  res.status("error" in r ? 400 : 200).json(r);
+});
+
+pilotRouter.put("/posts/:id", (req, res) => {
+  const r = savePost(req.session!.pilotId!, req.body || {}, "pilot", Number(req.params.id));
+  res.status("error" in r ? 400 : 200).json(r);
+});
+
+pilotRouter.delete("/posts/:id", (req, res) => {
+  const r = deletePost(req.session!.pilotId!, Number(req.params.id));
+  res.status("error" in r ? 400 : 200).json(r);
+});
+
+pilotRouter.post("/posts/:id/retry", (req, res) => {
+  const r = retryPost(req.session!.pilotId!, Number(req.params.id));
+  res.status("error" in r ? 400 : 200).json(r);
+});
+
+/** «Опубликовал в Instagram» */
+pilotRouter.post("/posts/:id/targets/:channelId/done", (req, res) => {
+  const r = markManual(req.session!.pilotId!, Number(req.params.id), Number(req.params.channelId), req.body?.url);
+  res.status("error" in r ? 400 : 200).json(r);
 });

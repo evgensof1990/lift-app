@@ -22,4 +22,8 @@ export const config = {
   /** Оператор персональных данных — для страницы /privacy */
   operatorName: (process.env.OPERATOR_NAME || "").trim(),
   operatorEmail: (process.env.OPERATOR_EMAIL || "").trim(),
+  /** MAX Bot API (для автопостинга в каналы MAX; нужен NODE_EXTRA_CA_CERTS с сертификатами Минцифры) */
+  maxApiBase: (process.env.MAX_API_BASE || "https://platform-api2.max.ru").replace(/\/$/, ""),
+  /** Выключить планировщик автопостинга (например, на тестовой копии) */
+  postingDisabled: process.env.POSTING_DISABLED === "true",
 };

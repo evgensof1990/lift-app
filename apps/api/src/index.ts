@@ -8,6 +8,7 @@ import { authRouter } from "./routes/auth.js";
 import { pilotRouter } from "./routes/pilot.js";
 import { teamRouter } from "./routes/team.js";
 import { privacyPage } from "./privacy.js";
+import { startScheduler } from "./posting.js";
 
 const app = express();
 app.set("trust proxy", "loopback");
@@ -60,4 +61,5 @@ if (fs.existsSync(config.webDist)) {
 app.listen(config.port, "127.0.0.1", () => {
   console.log(`Лифт: http://127.0.0.1:${config.port}`);
   if (!config.teamPassword) console.warn("⚠ TEAM_PASSWORD не задан — вход команды закрыт");
+  startScheduler();
 });

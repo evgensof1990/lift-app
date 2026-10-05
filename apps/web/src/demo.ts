@@ -172,7 +172,7 @@ export async function demoApi(path: string, method: string, json: unknown, body:
   if (path === "/api/auth/logout") return { ok: true };
 
   // ——— пилот ———
-  if (path === "/api/me") return overview(pilot(ME));
+  if (path === "/api/me") return { ...overview(pilot(ME)), postsWaiting: demoPostList.filter((p) => p.status === "waiting").length };
   if ((r = m(/^\/api\/tasks\/(\d+)\/done$/))) {
     const t = state.tasks.find((x) => x.id === Number(r![1]) && x.pilot_id === ME && x.status === "accepted") || fail("Задача не найдена", 404);
     t.done_at = b.done === false ? null : t.done_at || now();
@@ -233,6 +233,12 @@ export async function demoApi(path: string, method: string, json: unknown, body:
         return { id: file.id, name: file.name, mime: file.mime, size: file.size, url: file.url };
       }),
     };
+  }
+
+  // ——— посты (в демо ничего не публикуется — статусы имитируются) ———
+  const postsUrl = m(/^\/api\/(?:team\/pilots\/\d+\/)?posts$/) || m(/^\/api\/(?:team\/)?posts\/(\d+)(\/retry)?$/);
+  if (postsUrl || path.match(/^\/api\/team\/pilots\/\d+\/files$/) || path.match(/^\/api\/team\/(pilots\/\d+\/)?channels/)) {
+    return demoPosts(path, method, b, body);
   }
 
   // ——— команда ———
@@ -377,4 +383,68 @@ export async function demoApi(path: string, method: string, json: unknown, body:
     return { ok: true };
   }
   return fail("Не найдено", 404);
+}
+
+type DemoPost = {
+  id: number; text: string; photos: { id: string; name: string; mime: string; size: number; url: string }[];
+  publishAt: string | null; status: string; createdBy: string; createdAt: string;
+  targets: { channelId: number; kind: "vk" | "max" | "tg" | "dzen" | "instagram"; title: string; status: string; url: string; error: string; sentAt: string | null }[];
+};
+const DEMO_CHANNELS = [
+  { id: 1, kind: "vk" as const, title: "ВКонтакте (демо)", enabled: true, target: "vk.com/workshop4", hasToken: true },
+  { id: 2, kind: "max" as const, title: "Канал в MAX (демо)", enabled: true, target: "-100", hasToken: true },
+  { id: 3, kind: "tg" as const, title: "Telegram (демо)", enabled: true, target: "@cex4", hasToken: true },
+  { id: 4, kind: "dzen" as const, title: "Дзен (демо)", enabled: true, target: "dzen.ru/cex4", hasToken: true },
+  { id: 5, kind: "instagram" as const, title: "Instagram (демо)", enabled: true, target: "@cex4", hasToken: true, manual: true },
+];
+let demoPostList: DemoPost[] = [];
+
+function demoPosts(path: string, method: string, b: Record<string, unknown>, body: unknown): unknown {
+  if (path.endsWith("/files")) {
+    const files = body instanceof FormData ? (body.getAll("files") as File[]) : [];
+    return { files: files.map((f) => ({ id: `demo-${state.seq++}`, name: f.name, mime: f.type, size: f.size, url: URL.createObjectURL(f) })) };
+  }
+  if (path.includes("/channels")) {
+    if (path.endsWith("/check")) return { ok: true, info: "Демо: подключение не проверяется" };
+    return fail("В демо соцсети не подключаются");
+  }
+  if (method === "GET") return { posts: demoPostList, channels: DEMO_CHANNELS };
+  const idm = path.match(/posts\/(\d+)/);
+  const id = idm ? Number(idm[1]) : 0;
+  if (method === "DELETE") {
+    demoPostList = demoPostList.filter((p) => p.id !== id);
+    return { ok: true };
+  }
+  if (path.endsWith("/retry")) return { ok: true };
+  const done = path.match(/posts\/(\d+)\/targets\/(\d+)\/done$/);
+  if (done) {
+    const p = demoPostList.find((x) => x.id === Number(done[1]));
+    const t = p?.targets.find((x) => x.channelId === Number(done[2]));
+    if (p && t) {
+      t.status = "sent";
+      t.sentAt = now();
+      if (!p.targets.some((x) => x.status === "manual")) p.status = "done";
+    }
+    return { ok: true };
+  }
+  const mode = String(b.mode || "draft");
+  const ids = Array.isArray(b.channelIds) ? (b.channelIds as number[]) : [];
+  if (!String(b.text || "").trim() && !(b.photos as unknown[])?.length) fail("Добавьте текст или фото");
+  if (mode !== "draft" && !ids.length) fail("Выберите, куда публиковать");
+  const prev = demoPostList.find((p) => p.id === id);
+  const photos = ((b.photos as string[]) || []).map((pid) => prev?.photos.find((x) => x.id === pid) || { id: pid, name: "фото", mime: "image/jpeg", size: 0, url: "" });
+  const post: DemoPost = {
+    id: prev?.id || state.seq++,
+    text: String(b.text || ""),
+    photos,
+    publishAt: mode === "now" ? new Date().toISOString() : mode === "schedule" ? String(b.publishAt) : null,
+    status: mode === "now" ? (ids.includes(5) ? "waiting" : "done") : mode === "schedule" ? "scheduled" : "draft",
+    createdBy: "pilot",
+    createdAt: now(),
+    targets: DEMO_CHANNELS.filter((c) => ids.includes(c.id)).map((c) => ({
+      channelId: c.id, kind: c.kind, title: c.title, status: mode !== "now" ? "pending" : c.kind === "instagram" ? "manual" : "sent", url: "", error: "", sentAt: mode === "now" && c.kind !== "instagram" ? now() : null,
+    })),
+  };
+  demoPostList = [post, ...demoPostList.filter((p) => p.id !== post.id)];
+  return { id: post.id };
 }

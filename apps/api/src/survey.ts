@@ -11,6 +11,8 @@ export type Question = {
   title: string;
   hint?: string;
   required?: boolean;
+  /** обязательный вопрос засчитан, если ответили на него ИЛИ на вопрос or (фото — или ссылка на папку) */
+  or?: string;
   options?: string[];
 };
 
@@ -58,8 +60,8 @@ export const SURVEY: Section[] = [
       { id: "q17", type: "textarea", required: true, title: "Перечислите товары или услуги с ценами", hint: "Каждый с новой строки: название — цена от — срок — пара слов описания. Пример: «Доска из дуба 40×25 — от 2 500 ₽ — 5 дней — масло, гравировка по желанию». Можно прикрепить готовый прайс ниже." },
       { id: "q18", type: "files", title: "Прайс-лист, если он есть в файле", hint: "Excel, PDF, фото прайса." },
       { id: "q19", type: "textarea", title: "Есть ли у товаров варианты на выбор? Какие?", hint: "Размер, цвет, материал, гравировка, длительность услуги." },
-      { id: "q20", type: "files", required: true, title: "Фото товаров или выполненных работ", hint: "Лучше вертикальные (3:4), при дневном свете, без чужих логотипов. Если файлов много — дайте ссылку на папку в следующем вопросе." },
-      { id: "q21", type: "text", title: "Ссылка на папку с фото", hint: "Яндекс Диск, Google Drive, облако." },
+      { id: "q20", type: "files", required: true, or: "q21", title: "Фото товаров или выполненных работ", hint: "Прикрепите фото здесь или дайте ссылку на папку в следующем вопросе — достаточно одного. Лучше вертикальные (3:4), при дневном свете, без чужих логотипов." },
+      { id: "q21", type: "text", title: "Ссылка на папку с фото", hint: "Яндекс Диск, Google Drive, облако. Обязательно, если не прикрепили фото выше." },
     ],
   },
   {
@@ -148,10 +150,15 @@ export function normalizeAnswer(q: Question, value: unknown): string | string[] 
 }
 
 /** sentAt — когда пилот отправил анкету команде: с этого момента она готова, даже с пропусками */
+/** Обязательный вопрос закрыт: есть ответ на него или на парный вопрос (q.or) */
+export function requiredMet(q: Question, answers: Record<string, unknown>) {
+  return isAnswered(answers[q.id]) || (!!q.or && isAnswered(answers[q.or]));
+}
+
 export function surveyProgress(answers: Record<string, unknown>, sentAt?: string | null) {
   const answered = ALL_QUESTIONS.filter((q) => isAnswered(answers[q.id])).length;
   const required = ALL_QUESTIONS.filter((q) => q.required);
-  const requiredDone = required.filter((q) => isAnswered(answers[q.id])).length;
+  const requiredDone = required.filter((q) => requiredMet(q, answers)).length;
   return {
     answered,
     total: ALL_QUESTIONS.length,
@@ -160,6 +167,6 @@ export function surveyProgress(answers: Record<string, unknown>, sentAt?: string
     complete: requiredDone === required.length || !!sentAt,
     sentAt: sentAt || null,
     /** обязательные вопросы без ответа — показать перед отправкой */
-    missing: required.filter((q) => !isAnswered(answers[q.id])).map((q) => q.id),
+    missing: required.filter((q) => !requiredMet(q, answers)).map((q) => q.id),
   };
 }

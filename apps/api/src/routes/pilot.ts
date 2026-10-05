@@ -106,6 +106,10 @@ pilotRouter.post("/survey/send", (req, res) => {
 
 /** Автосохранение: { answers: { q1: "…", q22: ["СДЭК"] } } */
 pilotRouter.put("/survey", (req, res) => {
+  if (getPilot(req.session!.pilotId!)?.survey_sent_at) {
+    res.status(409).json({ error: "Анкета уже у команды — ответы закреплены. Чтобы что-то изменить, напишите менеджеру." });
+    return;
+  }
   const result = saveAnswers(req.session!.pilotId!, req.body?.answers);
   if ("error" in result) {
     res.status(400).json(result);

@@ -16,6 +16,8 @@ type SurveyData = {
 type SaveState = "idle" | "saving" | "saved" | "error";
 
 const filled = (v: unknown) => (Array.isArray(v) ? v.length > 0 : typeof v === "string" && v.trim() !== "");
+/** обязательный вопрос закрыт — ответ есть на него или на парный (фото или ссылка на папку) */
+const met = (q: Question, a: Answers) => filled(a[q.id]) || (!!q.or && filled(a[q.or]));
 
 export default function Survey() {
   const [data, setData] = useState<SurveyData | null>(null);
@@ -37,7 +39,7 @@ export default function Survey() {
         setAnswers(d.answers);
         setFiles(d.files);
         // начинаем с первого раздела, где есть незаполненный обязательный вопрос
-        const first = d.sections.findIndex((s) => s.questions.some((q) => q.required && !filled(d.answers[q.id])));
+        const first = d.sections.findIndex((s) => s.questions.some((q) => q.required && !met(q, d.answers)));
         setStep(first === -1 ? 0 : first);
       })
       .catch((e: Error) => setErr(e.message));
@@ -108,6 +110,8 @@ export default function Survey() {
   const total = data.sections.reduce((n, s) => n + s.questions.length, 0);
   const answered = data.sections.flatMap((s) => s.questions).filter((q) => filled(answers[q.id])).length;
   const isLast = step === data.sections.length - 1;
+  /** анкета у команды — только просмотр: по этим ответам готовится стратегия */
+  const locked = !!data.sentAt;
 
   function go(next: number) {
     void flush();
@@ -117,7 +121,7 @@ export default function Survey() {
   }
 
   const missing = data.sections.flatMap((s, i) =>
-    s.questions.filter((q) => q.required && !filled(answers[q.id])).map((q) => ({ q, section: i })),
+    s.questions.filter((q) => q.required && !met(q, answers)).map((q) => ({ q, section: i })),
   );
 
   async function send() {
@@ -167,7 +171,7 @@ export default function Survey() {
               <h1 className="h1">Анкета у команды ✓</h1>
               <p className="accent strong">+{data.points} {pointsWord(data.points)}</p>
               <ol className="next-steps">
-                <li className="done"><strong>Анкета</strong><span>Готово. Ответы можно дополнить в любой момент — команда увидит.</span></li>
+                <li className="done"><strong>Анкета</strong><span>Готово. Ответы закреплены — по ним команда готовит стратегию.</span></li>
                 <li className="now"><strong>Стратегия</strong><span>Команда изучит ответы и составит план: цели и задачи со сроками. Обычно 1–3 дня.</span></li>
                 <li><strong>Согласование</strong><span>На главной появится «Стратегия на согласование» — вы выберете, что берёте в работу.</span></li>
                 <li><strong>Задачи и этажи</strong><span>Делаете задачи в срок — получаете баллы и поднимаетесь по этажам.</span></li>
@@ -218,13 +222,21 @@ export default function Survey() {
       </div>
 
       <div className="survey__body">
-        {step === 0 ? <p className="muted">{data.intro}</p> : null}
+        {locked ? (
+          <div className="card card--accent stack">
+            <strong>Анкета у команды — ответы закреплены</strong>
+            <span className="muted small">
+              По ним готовится стратегия, поэтому менять их уже нельзя. Нужно что-то поправить или дополнить — напишите менеджеру, он откроет анкету для правок.
+            </span>
+          </div>
+        ) : step === 0 ? <p className="muted">{data.intro}</p> : null}
         {section.questions.map((q) => (
           <QuestionField
             key={q.id}
             q={q}
             value={answers[q.id]}
             files={files}
+            locked={locked}
             onChange={(v) => setAnswer(q.id, v)}
             onUpload={(l) => void uploadFiles(q, l)}
           />
@@ -234,16 +246,16 @@ export default function Survey() {
 
       <footer className="survey__footer">
         {/* одна строка постоянной высоты: смена текста не двигает страницу, пока открыта клавиатура */}
-        <p className={`survey__save small${save === "error" ? " error" : " muted"}`}>
+        {locked ? null : <p className={`survey__save small${save === "error" ? " error" : " muted"}`}>
           {save === "saving" ? "Сохраняем…" : save === "error" ? "Нет связи — сохраним позже" : save === "saved" ? "Сохранено ✓" : "Ответы сохраняются сами"}
-        </p>
+        </p>}
         <div className="survey__nav">
           {step > 0 ? (
             <button type="button" className="btn btn--soft" onClick={() => go(step - 1)}>Назад</button>
           ) : null}
           {isLast ? (
-            data.sentAt ? (
-              <Link to="/" className="btn btn--primary" onClick={() => void flush()}>Готово</Link>
+            locked ? (
+              <Link to="/" className="btn btn--primary">На главную</Link>
             ) : (
               <button
                 type="button"
@@ -273,12 +285,14 @@ function QuestionField({
   q,
   value,
   files,
+  locked,
   onChange,
   onUpload,
 }: {
   q: Question;
   value: string | string[] | undefined;
   files: Record<string, FileInfo>;
+  locked?: boolean;
   onChange: (v: string | string[]) => void;
   onUpload: (l: FileList | null) => void;
 }) {
@@ -286,15 +300,15 @@ function QuestionField({
   const title = (
     <>
       {q.title}
-      {q.required ? <span className="req" aria-label="обязательный вопрос"> *</span> : null}
+      {q.required && !locked ? <span className="req" aria-label="обязательный вопрос"> *</span> : null}
     </>
   );
-  const hint = q.hint ? <p className="q__hint">{q.hint}</p> : null;
+  const hint = q.hint && !locked ? <p className="q__hint">{q.hint}</p> : null;
 
   if (q.type === "radio" || q.type === "checkbox") {
     const list = Array.isArray(value) ? value : [];
     return (
-      <fieldset className="q">
+      <fieldset className="q" disabled={locked}>
         <legend className="q__title">{title}</legend>
         {hint}
         {q.options?.map((o) => {
@@ -335,20 +349,20 @@ function QuestionField({
                     <span className="files__doc">{f?.name.split(".").pop()?.toUpperCase() || "Файл"}</span>
                   )}
                   <span className="files__name">{f?.name || "Файл"}</span>
-                  <button
+                  {locked ? null : <button
                     type="button"
                     className="files__remove"
                     aria-label={`Убрать ${f?.name || "файл"}`}
                     onClick={() => onChange(ids.filter((x) => x !== fid))}
                   >
                     ×
-                  </button>
+                  </button>}
                 </li>
               );
             })}
           </ul>
-        ) : null}
-        <label className="btn btn--outline file-btn">
+        ) : locked ? <p className="muted">—</p> : null}
+        {locked ? null : <label className="btn btn--outline file-btn">
           <IconPaperclip size={18} />Прикрепить файлы
           <input
             type="file"
@@ -359,7 +373,7 @@ function QuestionField({
               e.target.value = "";
             }}
           />
-        </label>
+        </label>}
       </div>
     );
   }
@@ -369,7 +383,9 @@ function QuestionField({
     <div className="q">
       <label className="q__title" htmlFor={id}>{title}</label>
       {hint}
-      {q.type === "textarea" ? (
+      {locked ? (
+        <p className="q__answer">{text.trim() || <span className="muted">—</span>}</p>
+      ) : q.type === "textarea" ? (
         <textarea id={id} rows={4} value={text} onChange={(e) => onChange(e.target.value)} />
       ) : (
         <input id={id} type="text" value={text} onChange={(e) => onChange(e.target.value)} />

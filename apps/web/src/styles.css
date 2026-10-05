@@ -330,3 +330,5 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-
 .next-steps li.now::before { background: var(--violet); color: #fff; }
 .next-steps span { color: var(--muted); font-size: 14px; }
 .next-steps li.now strong { color: var(--violet-text); }
+.q__answer { margin: 0; white-space: pre-wrap; padding: 12px 14px; border-radius: 14px; background: var(--card); }
+.q fieldset:disabled .option, fieldset.q:disabled .option { opacity: .75; cursor: default; }

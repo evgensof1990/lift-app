@@ -80,7 +80,7 @@ export default function TeamPilot() {
       {tab === "tasks" ? <TasksTab d={d} reload={load} /> : null}
       {tab === "posts" ? <PostsTab pilotId={d.pilot.id} /> : null}
       {tab === "tools" ? <ToolsTab d={d} reload={load} /> : null}
-      {tab === "survey" ? <SurveyTab d={d} /> : null}
+      {tab === "survey" ? <SurveyTab d={d} reload={load} /> : null}
     </TeamLayout>
   );
 }
@@ -555,7 +555,7 @@ function surveyText(d: Detail) {
   return lines.join("\n");
 }
 
-function SurveyTab({ d }: { d: Detail }) {
+function SurveyTab({ d, reload }: { d: Detail; reload: () => Promise<void> }) {
   const fmt = fmtAnswer;
   const [copied, setCopied] = useState<"" | "ok" | "manual">("");
   async function copy() {
@@ -575,6 +575,24 @@ function SurveyTab({ d }: { d: Detail }) {
         <button type="button" className="btn btn--primary" disabled={!d.survey.answered} onClick={() => void copy()}>
           Скопировать анкету для стратегии
         </button>
+        {d.survey.sentAt ? (
+          <div className="row-gap">
+            <span className="muted small">Пилот отправил анкету — ответы закреплены, править их он не может.</span>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => {
+                if (window.confirm("Вернуть анкету пилоту на доработку? Он сможет менять ответы и отправит её заново.")) {
+                  void api(`/api/team/pilots/${d.pilot.id}/survey/reopen`, { method: "POST" }).then(reload);
+                }
+              }}
+            >
+              Вернуть пилоту на доработку
+            </button>
+          </div>
+        ) : (
+          <span className="muted small">Пилот ещё не отправил анкету — ответы могут меняться.</span>
+        )}
         {copied === "ok" ? <p className="ok">Скопировано — вставьте в чат, где составляем стратегию.</p> : null}
         {copied === "manual" ? (
           <>

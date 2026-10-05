@@ -20,6 +20,7 @@ type Row = {
   archived: number;
   tools: string[];
   joined: boolean;
+  status: { label: string; tone: "action" | "warn" | "wait" | "ok" };
 };
 
 export default function TeamPilots() {
@@ -65,6 +66,7 @@ export default function TeamPilots() {
   const overdue = all.reduce((n, r) => n + r.overdue, 0);
   const inWork = all.reduce((n, r) => n + r.tasksTotal - r.tasksDone, 0);
   const surveys = all.filter((r) => r.survey.complete).length;
+  const yourMove = all.filter((r) => r.status.tone === "action").length;
 
   return (
     <TeamLayout>
@@ -104,6 +106,7 @@ export default function TeamPilots() {
 
       <div className="kpis">
         <div className="card"><small>Пилотов</small><b>{all.length}</b></div>
+        <div className={`card${yourMove ? " card--accent" : ""}`}><small>Ждут вас</small><b>{yourMove}</b></div>
         <div className="card"><small>Задач в работе</small><b>{inWork}</b></div>
         <div className={`card${overdue ? " card--warn" : ""}`}><small>Просрочено</small><b>{overdue}</b></div>
         <div className="card"><small>Анкет заполнено</small><b>{surveys} из {all.length}</b></div>
@@ -113,14 +116,14 @@ export default function TeamPilots() {
         <table className="table">
           <thead>
             <tr>
-              <th>Пилот</th><th>Этап</th><th>Этаж</th><th>Задачи</th><th>Ближайший срок</th><th>Анкета</th><th>Инструменты</th>
+              <th>Пилот</th><th>Статус</th><th>Этап</th><th>Этаж</th><th>Задачи</th><th>Ближайший срок</th><th>Анкета</th><th>Инструменты</th>
             </tr>
           </thead>
           <tbody>
             {rows === null ? (
-              <tr><td colSpan={7} className="muted">Загрузка…</td></tr>
+              <tr><td colSpan={8} className="muted">Загрузка…</td></tr>
             ) : all.length === 0 ? (
-              <tr><td colSpan={7} className="muted">Пилотов пока нет — пригласите первого.</td></tr>
+              <tr><td colSpan={8} className="muted">Пилотов пока нет — пригласите первого.</td></tr>
             ) : (
               all.map((r) => (
                 <tr key={r.id} onClick={() => nav(`/team/pilots/${r.id}`)} className="table__row">
@@ -128,6 +131,7 @@ export default function TeamPilots() {
                     <Link to={`/team/pilots/${r.id}`} className="strong plain">{r.business || r.name}</Link>
                     <small className="muted block">{[r.name, r.niche].filter(Boolean).join(" · ")}{r.joined ? "" : " · не входил"}</small>
                   </td>
+                  <td><span className={`status status--${r.status.tone}`}>{r.status.label}</span></td>
                   <td>
                     {r.stage || "—"}
                     {r.review ? <small className="accent block">ждёт согласования: {r.review}</small> : null}

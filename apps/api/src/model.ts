@@ -184,9 +184,10 @@ export type StrategyImport = {
 export function parseStrategy(raw: unknown): StrategyImport | string {
   if (!raw || typeof raw !== "object") return "Нужен JSON-объект стратегии";
   const s = raw as Record<string, unknown>;
-  if (!Array.isArray(s.goals) || !s.goals.length) return "В стратегии нет целей (goals)";
+  // без целей можно: тогда обновляются только этапы, инструменты и текст цели
+  if (!Array.isArray(s.goals) && !Array.isArray(s.stages) && !Array.isArray(s.tools)) return "В стратегии нет целей (goals)";
   const str = (v: unknown, max: number) => String(v ?? "").trim().slice(0, max);
-  const goals = (s.goals as Record<string, unknown>[]).slice(0, 100).map((g) => ({
+  const goals = (Array.isArray(s.goals) ? (s.goals as Record<string, unknown>[]) : []).slice(0, 100).map((g) => ({
     title: str(g.title, 200),
     description: str(g.description, 3000),
     tasks: (Array.isArray(g.tasks) ? (g.tasks as Record<string, unknown>[]) : []).slice(0, 100).map((t) => {
@@ -200,7 +201,7 @@ export function parseStrategy(raw: unknown): StrategyImport | string {
       };
     }).filter((t) => t.title),
   })).filter((g) => g.title);
-  if (!goals.length) return "У целей нет названий";
+  if (Array.isArray(s.goals) && s.goals.length && !goals.length) return "У целей нет названий";
   return {
     goal: s.goal === undefined ? undefined : str(s.goal, 300),
     goalNote: s.goalNote === undefined ? undefined : str(s.goalNote, 300),

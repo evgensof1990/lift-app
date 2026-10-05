@@ -212,7 +212,13 @@ export async function demoApi(path: string, method: string, json: unknown, body:
     return { ok: true };
   }
   if (path === "/api/survey" && method === "GET") {
-    return { title: SURVEY_TITLE, intro: SURVEY_INTRO, points: SURVEY_POINTS, sections: SURVEY, answers: state.answers[ME] || {}, files: filesFor(ME) };
+    return { title: SURVEY_TITLE, intro: SURVEY_INTRO, points: SURVEY_POINTS, sections: SURVEY, answers: state.answers[ME] || {}, files: filesFor(ME), sentAt: pilot(ME).survey_sent_at || null };
+  }
+  if (path === "/api/survey/send") {
+    const p = pilot(ME);
+    p.survey_sent_at ||= now();
+    persist();
+    return { ok: true };
   }
   if (path === "/api/survey" && method === "PUT") {
     const a = (state.answers[ME] ||= {});
@@ -289,7 +295,7 @@ export async function demoApi(path: string, method: string, json: unknown, body:
       })),
       allTasks: tasks.map((t) => publicTask(t, g)),
       profile: { phone: p.phone, consentAt: p.consent_at, inviteUrl: `https://lift.myrenthub.ru/invite/${p.invite}` },
-      surveySections: SURVEY, answers, files: filesFor(p.id), surveyProgress: surveyProgress(answers),
+      surveySections: SURVEY, answers, files: filesFor(p.id), surveyProgress: surveyProgress(answers, p.survey_sent_at),
     };
   }
   if ((r = m(/^\/api\/team\/pilots\/(\d+)\/strategy$/))) {

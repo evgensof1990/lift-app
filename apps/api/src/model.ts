@@ -10,6 +10,7 @@ export type Status = "proposed" | "accepted" | "declined";
 export type PilotRow = {
   id: number; name: string; business: string; niche: string; goal: string; goal_note: string;
   plan_title: string; team_note: string; created_at: string; reviewed_at: string | null;
+  survey_sent_at?: string | null;
 };
 export type GoalRow = { id: number; sort_order: number; title: string; description: string; status: Status; decline_reason: string; decided_at: string | null };
 export type TaskRow = {
@@ -64,7 +65,7 @@ export function buildOverview(
   // задача в работе, только если она принята и её цель (если есть) тоже принята
   const active = (t: TaskRow) => t.status === "accepted" && (!t.goal_id || goals.get(t.goal_id)?.status === "accepted");
   const work = sortTasks(taskRows.filter(active));
-  const survey = surveyProgress(answers);
+  const survey = surveyProgress(answers, p.survey_sent_at);
   const game = gameState(work, (survey.complete ? SURVEY_POINTS : 0) + (p.reviewed_at ? REVIEW_POINTS : 0), p.created_at);
   const pt = (t: TaskRow) => publicTask(t, goals);
   const goalView = (g: GoalRow) => {

@@ -59,11 +59,31 @@ export default function Home({ data }: PilotCtx) {
         </Link>
       ) : null}
 
-      <div className="section-head">
-        <h2 className="h2">Ближайшие задачи</h2>
-        <Link to="/tasks" className="link">Все задачи</Link>
-      </div>
-      {upcoming.length ? (
+      {!data.tasks.length && !data.review.pending ? (
+        <section className="card stack">
+          <h2 className="h2">Что дальше</h2>
+          <ol className="next-steps">
+            <li className={survey.complete ? "done" : "now"}>
+              <strong>Анкета</strong>
+              <span>{survey.complete ? "Готово — команда её изучает." : "Ответьте на вопросы, на какие можете, и нажмите «Отправить команде» в конце."}</span>
+            </li>
+            <li className={survey.complete ? "now" : ""}>
+              <strong>Стратегия</strong>
+              <span>{survey.complete ? "Команда составляет план: цели и задачи со сроками. Обычно 1–3 дня." : "По вашим ответам команда составит план: цели и задачи со сроками."}</span>
+            </li>
+            <li><strong>Согласование</strong><span>Здесь появится «Стратегия на согласование» — вы выберете, что берёте в работу.</span></li>
+            <li><strong>Задачи и этажи</strong><span>Делаете задачи в срок — получаете баллы и поднимаетесь по этажам.</span></li>
+          </ol>
+        </section>
+      ) : null}
+
+      {!data.tasks.length && !data.review.pending ? null : (
+        <div className="section-head">
+          <h2 className="h2">Ближайшие задачи</h2>
+          <Link to="/tasks" className="link">Все задачи</Link>
+        </div>
+      )}
+      {!data.tasks.length && !data.review.pending ? null : upcoming.length ? (
         <ul className="list">
           {upcoming.map((t) => (
             <li key={t.id} className="row-item">

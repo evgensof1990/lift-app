@@ -94,7 +94,14 @@ pilotRouter.get("/survey", (req, res) => {
     sections: SURVEY,
     answers,
     files: filesInfo(pilotId, answers),
+    sentAt: getPilot(pilotId)?.survey_sent_at || null,
   });
+});
+
+/** «Отправить анкету команде»: можно и с пропусками — команда уточнит при составлении стратегии */
+pilotRouter.post("/survey/send", (req, res) => {
+  db.prepare("UPDATE pilots SET survey_sent_at = COALESCE(survey_sent_at, datetime('now')) WHERE id = ?").run(req.session!.pilotId!);
+  res.json({ ok: true });
 });
 
 /** Автосохранение: { answers: { q1: "…", q22: ["СДЭК"] } } */

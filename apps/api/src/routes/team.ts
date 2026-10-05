@@ -121,7 +121,7 @@ teamRouter.get("/pilots/:id", (req, res) => {
     surveySections: SURVEY,
     answers,
     files: filesInfo(p.id, answers),
-    surveyProgress: surveyProgress(answers),
+    surveyProgress: surveyProgress(answers, p.survey_sent_at),
   });
 });
 

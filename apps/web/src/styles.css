@@ -316,3 +316,17 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-
 .chat-pick { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .chat-pick__item { width: 100%; min-height: 48px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg-2); color: var(--text); cursor: pointer; text-align: left; }
 .chat-pick__item.on { border-color: var(--violet); background: var(--card-2); }
+
+/* Анкета: статус сохранения — всегда одна строка, чтобы страница не прыгала */
+.survey__save { margin: 0; height: 18px; line-height: 18px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 400; }
+.missing { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.missing__item { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 12px; text-align: left; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); cursor: pointer; }
+.missing__item small { flex: none; font-weight: 700; }
+.next-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0; counter-reset: step; }
+.next-steps li { position: relative; padding: 0 0 18px 40px; display: flex; flex-direction: column; gap: 2px; counter-increment: step; }
+.next-steps li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; background: var(--card-2); color: var(--muted); }
+.next-steps li:not(:last-child)::after { content: ""; position: absolute; left: 12px; top: 30px; bottom: 4px; width: 2px; background: var(--line); }
+.next-steps li.done::before { content: "✓"; background: var(--violet-deep); color: #fff; }
+.next-steps li.now::before { background: var(--violet); color: #fff; }
+.next-steps span { color: var(--muted); font-size: 14px; }
+.next-steps li.now strong { color: var(--violet-text); }

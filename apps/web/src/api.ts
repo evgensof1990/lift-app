@@ -125,6 +125,10 @@ export type SurveyProgress = {
   requiredDone: number;
   requiredTotal: number;
   complete: boolean;
+  /** когда пилот отправил анкету команде */
+  sentAt: string | null;
+  /** id обязательных вопросов без ответа */
+  missing: string[];
   points: number;
 };
 

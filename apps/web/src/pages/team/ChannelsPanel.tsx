@@ -44,6 +44,22 @@ export default function ChannelsPanel({ pilotId, onChange }: { pilotId: number; 
   const [editId, setEditId] = useState<number | null>(null);
   const [msg, setMsg] = useState<Record<number, string>>({});
   const [err, setErr] = useState("");
+  const [chats, setChats] = useState<{ id: string; title: string; type: string }[] | null>(null);
+
+  async function findChats() {
+    if (!draft) return;
+    setErr("");
+    setChats(null);
+    try {
+      const r = await api<{ chats: { id: string; title: string; type: string }[] }>(`/api/team/pilots/${pilotId}/max-chats`, {
+        method: "POST",
+        json: { token: draft.token, channelId: editId || undefined },
+      });
+      setChats(r.chats);
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  }
 
   const load = useCallback(async () => {
     setList((await api<{ channels: ChannelView[] }>(`/api/team/pilots/${pilotId}/posts`)).channels);
@@ -91,6 +107,7 @@ export default function ChannelsPanel({ pilotId, onChange }: { pilotId: number; 
               type="button"
               className="btn btn--ghost"
               onClick={() => {
+                setChats(null);
                 setEditId(c.id);
                 setDraft({ kind: c.kind, title: c.title, target: c.target, token: "" });
               }}
@@ -132,6 +149,31 @@ export default function ChannelsPanel({ pilotId, onChange }: { pilotId: number; 
             <label className="field"><span>{HELP[draft.kind].token}{editId ? " (пусто — оставить прежний)" : ""}</span>
               <input type="password" autoComplete="off" value={draft.token} onChange={(e) => setDraft({ ...draft, token: e.target.value })} /></label>
           )}
+          {draft.kind === "max" ? (
+            <div className="stack">
+              <button type="button" className="btn btn--soft" onClick={() => void findChats()}>Найти каналы бота</button>
+              {chats ? (
+                chats.length ? (
+                  <ul className="chat-pick">
+                    {chats.map((ch) => (
+                      <li key={ch.id}>
+                        <button
+                          type="button"
+                          className={`chat-pick__item${draft.target === ch.id ? " on" : ""}`}
+                          onClick={() => setDraft({ ...draft, target: ch.id, title: draft.title || ch.title })}
+                        >
+                          <strong>{ch.title}</strong>
+                          <small className="muted">{ch.type === "channel" ? "канал" : ch.type === "chat" ? "группа" : ch.type === "dialog" ? "личный чат — не подходит" : ch.type} · {ch.id}</small>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="muted small">Бот пока не добавлен ни в один канал. Добавьте его в канал «Цеха» администратором и нажмите ещё раз.</p>
+                )
+              ) : null}
+            </div>
+          ) : null}
           {err ? <p className="error">{err}</p> : null}
           <div className="row-gap">
             <button type="button" className="btn btn--primary" onClick={() => void save()}>Сохранить</button>

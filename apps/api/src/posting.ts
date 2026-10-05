@@ -347,3 +347,14 @@ export function startScheduler() {
   setInterval(() => void runDue(), 60 * 1000).unref();
   setTimeout(() => void runDue(), 5000).unref();
 }
+
+/** Каналы MAX, куда добавлен бот (по токену из формы или по сохранённому каналу) */
+export async function maxBotChats(pilotId: number, token: string, channelId?: number) {
+  let botToken = token.trim();
+  if (!botToken && channelId) {
+    const c = db.prepare("SELECT * FROM channels WHERE id = ? AND pilot_id = ? AND kind = 'max'").get(channelId, pilotId) as Channel | undefined;
+    botToken = parse<Record<string, string>>(c?.config || "{}", {}).botToken || "";
+  }
+  if (!botToken) throw new Error("Сначала вставьте токен бота");
+  return maxPublisher.listChats(botToken);
+}

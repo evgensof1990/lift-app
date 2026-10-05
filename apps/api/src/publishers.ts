@@ -97,9 +97,26 @@ async function maxUploadPhoto(c: MaxConfig, photo: PostPayload["photos"][number]
 }
 
 export const maxPublisher = {
+  /** Чаты и каналы, куда добавлен бот: из них выбираем канал для постов */
+  async listChats(botToken: string) {
+    const res = (await maxFetch({ botToken, chatId: "" }, "GET", "/chats?count=100")) as {
+      chats?: { chat_id: number; type?: string; title?: string; status?: string }[];
+    };
+    return (res.chats || []).map((ch) => ({ id: String(ch.chat_id), title: ch.title || String(ch.chat_id), type: ch.type || "", status: ch.status || "" }));
+  },
   async check(c: MaxConfig) {
     const me = (await maxFetch(c, "GET", "/me")) as { name?: string; username?: string };
-    const chat = (await maxFetch(c, "GET", `/chats/${encodeURIComponent(c.chatId)}`)) as { title?: string };
+    let chat: { title?: string };
+    try {
+      chat = (await maxFetch(c, "GET", `/chats/${encodeURIComponent(c.chatId)}`)) as { title?: string };
+    } catch (e) {
+      if (/chat\.not\.found|404/.test((e as Error).message)) {
+        throw new Error(
+          `Бот «${me.name || me.username || "?"}» работает, но канал ${c.chatId} не найден. Это должен быть ID канала (обычно с минусом), а не пользователя, и бот — администратор канала. Нажмите «Найти каналы бота».`,
+        );
+      }
+      throw e;
+    }
     return `Бот «${me.name || me.username || "?"}» → канал «${chat.title || c.chatId}»`;
   },
   async publish(c: MaxConfig, p: PostPayload): Promise<PublishResult> {

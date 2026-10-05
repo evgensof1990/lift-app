@@ -536,6 +536,7 @@ function surveyText(d: Detail) {
     `АНКЕТА ПИЛОТА «ЛИФТ»: ${[p.business, p.name].filter(Boolean).join(" — ")}`,
     p.niche ? `Ниша: ${p.niche}` : "",
     `Заполнено ${d.survey.answered} из ${d.survey.total}, обязательных ${d.survey.requiredDone} из ${d.survey.requiredTotal}`,
+    d.survey.sentAt ? "Пилот отправил анкету команде; на вопросы без ответа ответов нет — уточнить при разговоре" : "Пилот ещё не отправил анкету — заполняет",
   ].filter(Boolean);
   for (const s of d.surveySections) {
     lines.push("", `## ${s.title}`);

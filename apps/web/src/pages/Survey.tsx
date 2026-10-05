@@ -10,6 +10,7 @@ type SurveyData = {
   sections: Section[];
   answers: Answers;
   files: Record<string, FileInfo>;
+  sentAt: string | null;
 };
 
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -23,6 +24,9 @@ export default function Survey() {
   const [step, setStep] = useState(0);
   const [save, setSave] = useState<SaveState>("idle");
   const [err, setErr] = useState("");
+  /** экран перед отправкой (какие обязательные пропущены) и после неё (что дальше) */
+  const [finish, setFinish] = useState<"" | "check" | "sent">("");
+  const [sending, setSending] = useState(false);
   const pending = useRef<Answers>({});
   const timer = useRef<number | undefined>(undefined);
 
@@ -107,8 +111,84 @@ export default function Survey() {
 
   function go(next: number) {
     void flush();
+    setFinish("");
     setStep(next);
     window.scrollTo({ top: 0 });
+  }
+
+  const missing = data.sections.flatMap((s, i) =>
+    s.questions.filter((q) => q.required && !filled(answers[q.id])).map((q) => ({ q, section: i })),
+  );
+
+  async function send() {
+    setSending(true);
+    setErr("");
+    try {
+      await flush();
+      await api("/api/survey/send", { method: "POST" });
+      setData((d) => (d ? { ...d, sentAt: d.sentAt || new Date().toISOString() } : d));
+      setFinish("sent");
+      window.scrollTo({ top: 0 });
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  if (finish) {
+    return (
+      <div className="survey">
+        <header className="survey__bar">
+          <button type="button" className="icon-btn" aria-label="Назад" onClick={() => setFinish("")}><IconBack /></button>
+          <span className="strong">{data.title}</span>
+        </header>
+        <div className="survey__body">
+          {finish === "check" ? (
+            <>
+              <h1 className="h1">Отправить анкету команде?</h1>
+              <p className="muted">
+                Без ответа {missing.length} {missing.length === 1 ? "обязательный вопрос" : missing.length < 5 ? "обязательных вопроса" : "обязательных вопросов"}.
+                Если ответа нет — ничего страшного, отправляйте: команда уточнит при разговоре.
+              </p>
+              <ul className="missing">
+                {missing.map(({ q, section }) => (
+                  <li key={q.id}>
+                    <button type="button" className="missing__item" onClick={() => go(section)}>
+                      <span>{q.title}</span>
+                      <small className="accent">Ответить</small>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <>
+              <h1 className="h1">Анкета у команды ✓</h1>
+              <p className="accent strong">+{data.points} {pointsWord(data.points)}</p>
+              <ol className="next-steps">
+                <li className="done"><strong>Анкета</strong><span>Готово. Ответы можно дополнить в любой момент — команда увидит.</span></li>
+                <li className="now"><strong>Стратегия</strong><span>Команда изучит ответы и составит план: цели и задачи со сроками. Обычно 1–3 дня.</span></li>
+                <li><strong>Согласование</strong><span>На главной появится «Стратегия на согласование» — вы выберете, что берёте в работу.</span></li>
+                <li><strong>Задачи и этажи</strong><span>Делаете задачи в срок — получаете баллы и поднимаетесь по этажам.</span></li>
+              </ol>
+            </>
+          )}
+          {err ? <p className="error">{err}</p> : null}
+        </div>
+        <footer className="survey__footer">
+          <div className="survey__nav">
+            {finish === "check" ? (
+              <button type="button" className="btn btn--primary" disabled={sending} onClick={() => void send()}>
+                {sending ? "Отправляем…" : "Отправить как есть"}
+              </button>
+            ) : (
+              <Link to="/" className="btn btn--primary">На главную</Link>
+            )}
+          </div>
+        </footer>
+      </div>
+    );
   }
 
   return (
@@ -153,19 +233,33 @@ export default function Survey() {
       </div>
 
       <footer className="survey__footer">
-        <p className="muted small center">
-          {save === "saving"
-            ? "Сохраняем…"
-            : save === "error"
-              ? "Не сохранилось — проверьте интернет, попробуем ещё раз"
-              : "Ответы сохраняются сами — можно закрыть и вернуться"}
+        {/* одна строка постоянной высоты: смена текста не двигает страницу, пока открыта клавиатура */}
+        <p className={`survey__save small${save === "error" ? " error" : " muted"}`}>
+          {save === "saving" ? "Сохраняем…" : save === "error" ? "Нет связи — сохраним позже" : save === "saved" ? "Сохранено ✓" : "Ответы сохраняются сами"}
         </p>
         <div className="survey__nav">
           {step > 0 ? (
             <button type="button" className="btn btn--soft" onClick={() => go(step - 1)}>Назад</button>
           ) : null}
           {isLast ? (
-            <Link to="/" className="btn btn--primary" onClick={() => void flush()}>Готово</Link>
+            data.sentAt ? (
+              <Link to="/" className="btn btn--primary" onClick={() => void flush()}>Готово</Link>
+            ) : (
+              <button
+                type="button"
+                className="btn btn--primary"
+                disabled={sending}
+                onClick={() => {
+                  if (missing.length) {
+                    void flush();
+                    setFinish("check");
+                    window.scrollTo({ top: 0 });
+                  } else void send();
+                }}
+              >
+                Отправить команде
+              </button>
+            )
           ) : (
             <button type="button" className="btn btn--primary" onClick={() => go(step + 1)}>Дальше</button>
           )}

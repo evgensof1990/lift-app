@@ -108,6 +108,8 @@ addColumn("tasks", "decline_reason", "TEXT NOT NULL DEFAULT ''");
 addColumn("tasks", "decided_at", "TEXT");
 addColumn("tasks", "sort_order", "INTEGER NOT NULL DEFAULT 0");
 addColumn("pilots", "reviewed_at", "TEXT");
+// пилот нажал «Отправить анкету команде» — анкета считается готовой, даже если часть вопросов пропущена
+addColumn("pilots", "survey_sent_at", "TEXT");
 
 export type Status = "proposed" | "accepted" | "declined";
 
@@ -135,6 +137,7 @@ export type Pilot = {
   invite_token: string | null;
   consent_at: string | null;
   reviewed_at: string | null;
+  survey_sent_at: string | null;
   archived: number;
   created_at: string;
 };

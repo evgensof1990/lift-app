@@ -147,7 +147,8 @@ export function normalizeAnswer(q: Question, value: unknown): string | string[] 
   return value.filter((v): v is string => typeof v === "string").slice(0, 50);
 }
 
-export function surveyProgress(answers: Record<string, unknown>) {
+/** sentAt — когда пилот отправил анкету команде: с этого момента она готова, даже с пропусками */
+export function surveyProgress(answers: Record<string, unknown>, sentAt?: string | null) {
   const answered = ALL_QUESTIONS.filter((q) => isAnswered(answers[q.id])).length;
   const required = ALL_QUESTIONS.filter((q) => q.required);
   const requiredDone = required.filter((q) => isAnswered(answers[q.id])).length;
@@ -156,6 +157,9 @@ export function surveyProgress(answers: Record<string, unknown>) {
     total: ALL_QUESTIONS.length,
     requiredDone,
     requiredTotal: required.length,
-    complete: requiredDone === required.length,
+    complete: requiredDone === required.length || !!sentAt,
+    sentAt: sentAt || null,
+    /** обязательные вопросы без ответа — показать перед отправкой */
+    missing: required.filter((q) => !isAnswered(answers[q.id])).map((q) => q.id),
   };
 }

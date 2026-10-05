@@ -12,8 +12,8 @@ const NO_TOKEN: Kind[] = ["dzen", "instagram"];
 const HELP: Record<Kind, { target: string; token: string; hint: string }> = {
   vk: {
     target: "Сообщество ВК: адрес (vk.com/workshop4) или ID",
-    token: "Ключ доступа администратора сообщества",
-    hint: "Публикация идёт от имени сообщества. Нужен ключ пользователя-администратора группы с правами wall, photos, groups, offline — ключ самого сообщества ВК для публикации не подходит.",
+    token: "Или ключ доступа вручную (если уже есть)",
+    hint: "Публикация идёт от имени сообщества. Укажите сообщество и нажмите «Подключить через ВКонтакте» — войдите в ВК как администратор сообщества и разрешите доступ. Ключ сервер будет обновлять сам.",
   },
   max: {
     target: "ID канала MAX (chat_id, число, например -1001234567)",
@@ -45,6 +45,20 @@ export default function ChannelsPanel({ pilotId, onChange }: { pilotId: number; 
   const [msg, setMsg] = useState<Record<number, string>>({});
   const [err, setErr] = useState("");
   const [chats, setChats] = useState<{ id: string; title: string; type: string }[] | null>(null);
+
+  async function connectVk() {
+    if (!draft) return;
+    setErr("");
+    try {
+      const r = await api<{ url: string }>(`/api/team/pilots/${pilotId}/vk-auth`, {
+        method: "POST",
+        json: { channelId: editId || undefined, title: draft.title, target: draft.target },
+      });
+      window.location.href = r.url;
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  }
 
   async function findChats() {
     if (!draft) return;
@@ -100,6 +114,9 @@ export default function ChannelsPanel({ pilotId, onChange }: { pilotId: number; 
             <strong>{c.title}</strong>
             <span className="muted small">{KIND_LABEL[c.kind]} · {c.target}</span>
           </div>
+          {c.vkid && !c.vkWall ? (
+            <p className="small warn">ВК пока не дал право публиковать на стене. Когда поддержка VK ID откроет доступ — «Изменить» → «Подключить через ВКонтакте».</p>
+          ) : null}
           {msg[c.id] ? <p className={`small ${msg[c.id].startsWith("✓") ? "ok" : msg[c.id].startsWith("✕") ? "error" : "muted"}`}>{msg[c.id]}</p> : null}
           <div className="row-gap">
             <button type="button" className="btn btn--soft" onClick={() => void check(c.id)}>Проверить</button>
@@ -145,6 +162,11 @@ export default function ChannelsPanel({ pilotId, onChange }: { pilotId: number; 
             <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder={KIND_LABEL[draft.kind]} /></label>
           <label className="field"><span>{HELP[draft.kind].target}</span>
             <input value={draft.target} onChange={(e) => setDraft({ ...draft, target: e.target.value })} /></label>
+          {draft.kind === "vk" ? (
+            <button type="button" className="btn btn--primary" disabled={!draft.target.trim()} onClick={() => void connectVk()}>
+              Подключить через ВКонтакте
+            </button>
+          ) : null}
           {NO_TOKEN.includes(draft.kind) ? null : (
             <label className="field"><span>{HELP[draft.kind].token}{editId ? " (пусто — оставить прежний)" : ""}</span>
               <input type="password" autoComplete="off" value={draft.token} onChange={(e) => setDraft({ ...draft, token: e.target.value })} /></label>

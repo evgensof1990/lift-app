@@ -4,7 +4,7 @@ import { IconPaperclip } from "./Icons";
 import { shareToInstagram } from "../share";
 
 export type ChannelKind = "vk" | "max" | "tg" | "dzen" | "instagram";
-export type ChannelView = { id: number; kind: ChannelKind; title: string; enabled: boolean; target: string; hasToken: boolean; manual?: boolean };
+export type ChannelView = { id: number; kind: ChannelKind; title: string; enabled: boolean; target: string; hasToken: boolean; manual?: boolean; vkid?: boolean; vkWall?: boolean };
 export type PostTargetView = { channelId: number; kind: ChannelKind; title: string; status: "pending" | "manual" | "sent" | "failed"; url: string; error: string; sentAt: string | null };
 export type PostView = {
   id: number;

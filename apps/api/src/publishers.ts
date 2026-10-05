@@ -39,7 +39,7 @@ async function vk(method: string, params: Record<string, string>, token: string)
 
 /** ID сообщества: «123», «club123», «public123» или короткое имя «workshop4» */
 export async function vkResolveGroup(groupId: string, token: string) {
-  const id = groupId.trim().replace(/^https?:\/\/(m\.)?vk\.(com|ru)\//i, "").replace(/^(club|public)(\d+)$/i, "$2").replace(/^-/, "");
+  const id = groupId.trim().replace(/^(https?:\/\/)?(m\.)?vk\.(com|ru)\//i, "").replace(/^(club|public)(\d+)$/i, "$2").replace(/^-/, "");
   const res = (await vk("groups.getById", { group_id: id }, token)) as { groups?: { id: number; name: string }[] } | { id: number; name: string }[];
   const g = Array.isArray(res) ? res[0] : res.groups?.[0];
   if (!g) throw new Error("ВК: сообщество не найдено");

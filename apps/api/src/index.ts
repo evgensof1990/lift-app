@@ -53,7 +53,7 @@ app.get("/vk/callback", async (req, res) => {
         r.hasWall
           ? "Посты пилота будут публиковаться в сообщество автоматически."
           : "Вход прошёл, но ВК пока не дал право публиковать на стене (wall). Когда поддержка VK ID откроет доступ — подключите ещё раз.",
-        r.pilotId,
+        r.by === "pilot" ? "/posts" : `/team/pilots/${r.pilotId}?tab=posts`,
       ),
     );
   } catch (e) {

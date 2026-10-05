@@ -6,6 +6,7 @@ import { applyChanges } from "../strategy.js";
 import { channelView, deletePost, listChannels, listPosts, markManual, retryPost, savePost, waitingCount } from "../posting.js";
 import { applyDecisions, publicTask, type Decisions } from "../model.js";
 import { getAnswers, getPilot, listGoals, listTasks, pilotOverview, pilotReview } from "../pilot-data.js";
+import { vkAuthUrl } from "../vk-id.js";
 import { SURVEY, SURVEY_INTRO, SURVEY_POINTS, SURVEY_TITLE } from "../survey.js";
 
 export const pilotRouter = Router();
@@ -116,6 +117,22 @@ pilotRouter.post("/files", upload.array("files", 20), (req, res) => {
 pilotRouter.get("/posts", (req, res) => {
   const pilotId = req.session!.pilotId!;
   res.json({ posts: listPosts(pilotId), channels: listChannels(pilotId).filter((c) => c.enabled).map(channelView) });
+});
+
+/** Владелец сам подключает своё сообщество ВК (входит в ВК как его администратор) */
+pilotRouter.get("/vk", (req, res) => {
+  const c = listChannels(req.session!.pilotId!).find((x) => x.kind === "vk");
+  res.json({ channel: c ? channelView(c) : null });
+});
+
+pilotRouter.post("/vk/auth", (req, res) => {
+  const pilotId = req.session!.pilotId!;
+  const c = listChannels(pilotId).find((x) => x.kind === "vk");
+  try {
+    res.json({ url: vkAuthUrl(pilotId, { channelId: c?.id, title: c?.title, target: req.body?.target }, "pilot") });
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
 });
 
 pilotRouter.post("/posts", (req, res) => {

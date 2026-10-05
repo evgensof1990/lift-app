@@ -13,7 +13,7 @@ const VK_ID = (process.env.VK_ID_BASE || "https://id.vk.com").replace(/\/$/, "")
 const SCOPE = "wall photos groups";
 const STATE_TTL = 15 * 60 * 1000;
 
-type Pending = { pilotId: number; channelId?: number; title: string; groupId: string; verifier: string; until: number };
+type Pending = { by: "team" | "pilot"; pilotId: number; channelId?: number; title: string; groupId: string; verifier: string; until: number };
 const pending = new Map<string, Pending>();
 
 const b64url = (buf: Buffer) => buf.toString("base64url");
@@ -22,7 +22,7 @@ export function redirectUri() {
   return `${config.publicUrl}/vk/callback`;
 }
 
-export function vkAuthUrl(pilotId: number, b: { channelId?: number; title?: string; target?: string }) {
+export function vkAuthUrl(pilotId: number, b: { channelId?: number; title?: string; target?: string }, by: "team" | "pilot" = "team") {
   if (!config.vkClientId) throw new Error("Не задан VK_CLIENT_ID (ID приложения VK ID) в .env сервера");
   if (!config.publicUrl) throw new Error("Не задан PUBLIC_URL в .env сервера");
   const groupId = String(b.target || "").trim().slice(0, 100);
@@ -31,7 +31,7 @@ export function vkAuthUrl(pilotId: number, b: { channelId?: number; title?: stri
   for (const [k, v] of pending) if (v.until < now) pending.delete(k);
   const state = b64url(crypto.randomBytes(24));
   const verifier = b64url(crypto.randomBytes(48));
-  pending.set(state, { pilotId, channelId: b.channelId, title: String(b.title || "").trim().slice(0, 100), groupId, verifier, until: now + STATE_TTL });
+  pending.set(state, { by, pilotId, channelId: b.channelId, title: String(b.title || "").trim().slice(0, 100), groupId, verifier, until: now + STATE_TTL });
   const q = new URLSearchParams({
     response_type: "code",
     client_id: config.vkClientId,
@@ -89,7 +89,7 @@ export async function vkCallback(q: Record<string, unknown>) {
     : undefined;
   if (prev) db.prepare("UPDATE channels SET title = ?, config = ?, enabled = 1 WHERE id = ?").run(title, JSON.stringify(cfg), prev.id);
   else db.prepare("INSERT INTO channels (pilot_id, kind, title, config) VALUES (?, 'vk', ?, ?)").run(p.pilotId, title, JSON.stringify(cfg));
-  return { pilotId: p.pilotId, hasWall: cfg.scope.split(/[\s,]+/).includes("wall") };
+  return { by: p.by, pilotId: p.pilotId, hasWall: cfg.scope.split(/[\s,]+/).includes("wall") };
 }
 
 const refreshing = new Map<number, Promise<Record<string, string>>>();
@@ -132,10 +132,9 @@ export async function freshVkConfig(c: Pick<Channel, "id" | "config">): Promise<
 const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]!);
 
 /** Страница после входа в ВК: ссылка обратно в панель (в APK вход мог открыться в браузере телефона) */
-export function callbackPage(ok: boolean, text: string, pilotId?: number) {
-  const back = pilotId ? `/team/pilots/${pilotId}?tab=posts` : "/team";
+export function callbackPage(ok: boolean, text: string, back = "/") {
   return `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Лифт — ВКонтакте</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0912;color:#eee;font:16px/1.5 system-ui,sans-serif}
 main{max-width:420px;padding:24px;text-align:center}h1{font-size:22px}a{display:inline-block;margin-top:16px;padding:12px 20px;border-radius:12px;background:#7c4dff;color:#fff;text-decoration:none}</style></head>
-<body><main><h1>${ok ? "ВКонтакте подключён" : "Не получилось"}</h1><p>${esc(text)}</p><a href="${back}">Вернуться в «Лифт»</a></main></body></html>`;
+<body><main><h1>${ok ? "ВКонтакте подключён" : "Не получилось"}</h1><p>${esc(text)}</p><a href="${back}">Вернуться в «Лифт»</a><p style="opacity:.6;font-size:14px">Если вход открылся в браузере телефона — просто закройте вкладку и вернитесь в приложение «Лифт».</p></main></body></html>`;
 }

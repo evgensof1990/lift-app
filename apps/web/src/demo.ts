@@ -221,6 +221,7 @@ export async function demoApi(path: string, method: string, json: unknown, body:
     return { ok: true };
   }
   if (path === "/api/survey" && method === "PUT") {
+    if (pilot(ME).survey_sent_at) fail("Анкета уже у команды — ответы закреплены. Чтобы что-то изменить, напишите менеджеру.", 409);
     const a = (state.answers[ME] ||= {});
     for (const [qid, v] of Object.entries((b.answers || {}) as Record<string, unknown>)) {
       const q = QUESTION_BY_ID.get(qid);
@@ -297,6 +298,11 @@ export async function demoApi(path: string, method: string, json: unknown, body:
       profile: { phone: p.phone, consentAt: p.consent_at, inviteUrl: `https://lift.myrenthub.ru/invite/${p.invite}` },
       surveySections: SURVEY, answers, files: filesFor(p.id), surveyProgress: surveyProgress(answers, p.survey_sent_at),
     };
+  }
+  if ((r = m(/^\/api\/team\/pilots\/(\d+)\/survey\/reopen$/))) {
+    pilot(Number(r[1])).survey_sent_at = null;
+    persist();
+    return { ok: true };
   }
   if ((r = m(/^\/api\/team\/pilots\/(\d+)\/strategy$/))) {
     const p = pilot(Number(r[1]));

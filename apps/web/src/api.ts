@@ -163,6 +163,7 @@ export type Question = {
   title: string;
   hint?: string;
   required?: boolean;
+  or?: string;
   options?: string[];
 };
 export type Section = { id: string; title: string; questions: Question[] };

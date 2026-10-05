@@ -431,3 +431,11 @@ teamRouter.post("/pilots/:id/vk-auth", (req, res) => {
     res.status(400).json({ error: (e as Error).message });
   }
 });
+
+/** Вернуть анкету пилоту на доработку: снова можно править, потом он отправит заново */
+teamRouter.post("/pilots/:id/survey/reopen", (req, res) => {
+  const p = pilotOr404(Number(req.params.id), res);
+  if (!p) return;
+  db.prepare("UPDATE pilots SET survey_sent_at = NULL WHERE id = ?").run(p.id);
+  res.json({ ok: true });
+});

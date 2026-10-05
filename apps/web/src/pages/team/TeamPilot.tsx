@@ -301,6 +301,11 @@ function StrategyTab({ d, reload }: TabProps) {
     d.stages.length ? d.stages.map(({ title, description, status }) => ({ title, description, status })) : [],
   );
   const s = useSaver();
+  // этапы могли смениться импортом стратегии — иначе «Сохранить стратегию» перезапишет их старым (пустым) списком
+  const stagesKey = JSON.stringify(d.stages.map(({ title, description, status }) => [title, description, status]));
+  useEffect(() => {
+    setList(d.stages.map(({ title, description, status }) => ({ title, description, status })));
+  }, [stagesKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const upd = (i: number, patch: Partial<StageItem>) => setList(list.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const move = (i: number, dir: -1 | 1) => {
     const j = i + dir;

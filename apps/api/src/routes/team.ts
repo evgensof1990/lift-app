@@ -8,7 +8,7 @@ import { isOverdue } from "../game.js";
 import { parseStrategy, publicTask } from "../model.js";
 import { importStrategy } from "../strategy.js";
 import { registerUploads, upload } from "../answers.js";
-import { channelView, checkChannel, deletePost, listChannels, listPosts, retryPost, saveChannel, savePost } from "../posting.js";
+import { channelView, checkChannel, deletePost, listChannels, listPosts, markManual, retryPost, saveChannel, savePost } from "../posting.js";
 import type { Channel, Post } from "../db.js";
 import { SURVEY, surveyProgress } from "../survey.js";
 
@@ -376,5 +376,11 @@ teamRouter.delete("/posts/:id", (req, res) => {
 teamRouter.post("/posts/:id/retry", (req, res) => {
   const id = Number(req.params.id);
   const r = retryPost(postPilot(id), id);
+  res.status("error" in r ? 400 : 200).json(r);
+});
+
+teamRouter.post("/posts/:id/targets/:channelId/done", (req, res) => {
+  const id = Number(req.params.id);
+  const r = markManual(postPilot(id), id, Number(req.params.channelId), req.body?.url);
   res.status("error" in r ? 400 : 200).json(r);
 });

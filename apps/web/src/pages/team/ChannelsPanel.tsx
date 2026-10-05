@@ -2,10 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../../api";
 import type { ChannelView } from "../../components/Posts";
 
-type Draft = { kind: "vk" | "max"; title: string; target: string; token: string };
+type Kind = "vk" | "max" | "tg" | "dzen" | "instagram";
+type Draft = { kind: Kind; title: string; target: string; token: string };
 const EMPTY: Draft = { kind: "vk", title: "", target: "", token: "" };
 
-const HELP = {
+const KIND_LABEL: Record<Kind, string> = { tg: "Telegram", max: "MAX", vk: "ВКонтакте", dzen: "Дзен", instagram: "Instagram" };
+const NO_TOKEN: Kind[] = ["dzen", "instagram"];
+
+const HELP: Record<Kind, { target: string; token: string; hint: string }> = {
   vk: {
     target: "Сообщество ВК: адрес (vk.com/workshop4) или ID",
     token: "Ключ доступа администратора сообщества",
@@ -15,6 +19,21 @@ const HELP = {
     target: "ID канала MAX (chat_id, число, например -1001234567)",
     token: "Токен бота MAX",
     hint: "Бот должен быть администратором канала с правом писать сообщения. Токен — в кабинете платформы MAX (Чат-боты → ваш бот).",
+  },
+  tg: {
+    target: "Канал: @имя или ID (-100…)",
+    token: "Токен бота от @BotFather",
+    hint: "Создайте бота в @BotFather и сделайте его администратором канала с правом публиковать. Telegram в России работает с перебоями — если публикации не проходят, подключим прокси.",
+  },
+  dzen: {
+    target: "Адрес канала в Дзене (dzen.ru/…)",
+    token: "",
+    hint: "У Дзена нет API для публикации. Подключите к вашему Telegram-каналу официальный «Синхробот Дзена» — и каждый пост из Telegram сам появится в Дзене. В «Лифте» пост в Дзен уходит вместе с Telegram.",
+  },
+  instagram: {
+    target: "Аккаунт: @имя",
+    token: "",
+    hint: "Без API Meta и без риска блокировки: в назначенное время у пилота появляется кнопка «Опубликовать в Instagram» — подпись копируется, фото открываются в «Поделиться». Публикует сам пилот, одним касанием.",
   },
 };
 
@@ -63,7 +82,7 @@ export default function ChannelsPanel({ pilotId, onChange }: { pilotId: number; 
         <div key={c.id} className="channel">
           <div className="channel__head">
             <strong>{c.title}</strong>
-            <span className="muted small">{c.kind === "vk" ? "ВКонтакте" : "MAX"} · {c.target}</span>
+            <span className="muted small">{KIND_LABEL[c.kind]} · {c.target}</span>
           </div>
           {msg[c.id] ? <p className={`small ${msg[c.id].startsWith("✓") ? "ok" : msg[c.id].startsWith("✕") ? "error" : "muted"}`}>{msg[c.id]}</p> : null}
           <div className="row-gap">
@@ -96,21 +115,23 @@ export default function ChannelsPanel({ pilotId, onChange }: { pilotId: number; 
       {draft ? (
         <div className="stack">
           {!editId ? (
-            <div className="segmented">
-              {(["vk", "max"] as const).map((k) => (
+            <div className="segmented segmented--wrap">
+              {(Object.keys(KIND_LABEL) as Kind[]).map((k) => (
                 <button key={k} type="button" className={draft.kind === k ? "on" : ""} aria-pressed={draft.kind === k} onClick={() => setDraft({ ...draft, kind: k })}>
-                  {k === "vk" ? "ВКонтакте" : "MAX"}
+                  {KIND_LABEL[k]}
                 </button>
               ))}
             </div>
           ) : null}
           <p className="muted small">{HELP[draft.kind].hint}</p>
           <label className="field"><span>Название (видно пилоту)</span>
-            <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder={draft.kind === "vk" ? "ВКонтакте" : "Канал в MAX"} /></label>
+            <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder={KIND_LABEL[draft.kind]} /></label>
           <label className="field"><span>{HELP[draft.kind].target}</span>
             <input value={draft.target} onChange={(e) => setDraft({ ...draft, target: e.target.value })} /></label>
-          <label className="field"><span>{HELP[draft.kind].token}{editId ? " (пусто — оставить прежний)" : ""}</span>
-            <input type="password" autoComplete="off" value={draft.token} onChange={(e) => setDraft({ ...draft, token: e.target.value })} /></label>
+          {NO_TOKEN.includes(draft.kind) ? null : (
+            <label className="field"><span>{HELP[draft.kind].token}{editId ? " (пусто — оставить прежний)" : ""}</span>
+              <input type="password" autoComplete="off" value={draft.token} onChange={(e) => setDraft({ ...draft, token: e.target.value })} /></label>
+          )}
           {err ? <p className="error">{err}</p> : null}
           <div className="row-gap">
             <button type="button" className="btn btn--primary" onClick={() => void save()}>Сохранить</button>
@@ -120,7 +141,9 @@ export default function ChannelsPanel({ pilotId, onChange }: { pilotId: number; 
       ) : (
         <button type="button" className="btn btn--soft" onClick={() => setDraft(EMPTY)}>+ Подключить соцсеть</button>
       )}
-      <p className="muted small">Instagram пока не подключаем: Meta признана в России экстремистской, реклама там запрещена, а API Instagram из России недоступен.</p>
+      <p className="muted small">
+        Instagram — без API Meta: публикует пилот в одно касание. Помните: реклама в Instagram в России запрещена, пишите о процессе и работах, без «купите со скидкой».
+      </p>
     </aside>
   );
 }

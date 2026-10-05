@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type FileInfo } from "../api";
 import { IconPaperclip } from "./Icons";
+import { shareToInstagram } from "../share";
 
-export type ChannelView = { id: number; kind: "vk" | "max"; title: string; enabled: boolean; target: string; hasToken: boolean };
-export type PostTargetView = { channelId: number; kind: "vk" | "max"; title: string; status: "pending" | "sent" | "failed"; url: string; error: string; sentAt: string | null };
+export type ChannelKind = "vk" | "max" | "tg" | "dzen" | "instagram";
+export type ChannelView = { id: number; kind: ChannelKind; title: string; enabled: boolean; target: string; hasToken: boolean; manual?: boolean };
+export type PostTargetView = { channelId: number; kind: ChannelKind; title: string; status: "pending" | "manual" | "sent" | "failed"; url: string; error: string; sentAt: string | null };
 export type PostView = {
   id: number;
   text: string;
   photos: FileInfo[];
   publishAt: string | null;
-  status: "draft" | "scheduled" | "publishing" | "done" | "partial" | "failed";
+  status: "draft" | "scheduled" | "publishing" | "waiting" | "done" | "partial" | "failed";
   createdBy: "pilot" | "team";
   createdAt: string;
   targets: PostTargetView[];
@@ -22,6 +24,7 @@ const STATUS: Record<PostView["status"], [string, string]> = {
   draft: ["Черновик", "muted"],
   scheduled: ["Запланирован", "accent"],
   publishing: ["Публикуется…", "accent"],
+  waiting: ["Ждёт вас в Instagram", "warn"],
   done: ["Опубликован", "ok"],
   partial: ["Опубликован частично", "warn"],
   failed: ["Не опубликован", "error"],
@@ -91,7 +94,8 @@ export default function PostsBoard({ urls, emptyChannelsHint }: { urls: PostsApi
     );
   }
 
-  const upcoming = posts.filter((p) => !["done", "partial"].includes(p.status));
+  const waiting = posts.filter((p) => p.status === "waiting");
+  const upcoming = posts.filter((p) => !["done", "partial", "waiting"].includes(p.status));
   const published = posts.filter((p) => ["done", "partial"].includes(p.status));
 
   return (
@@ -103,6 +107,13 @@ export default function PostsBoard({ urls, emptyChannelsHint }: { urls: PostsApi
       )}
       <button type="button" className="btn btn--primary" onClick={() => setEditing("new")}>+ Новый пост</button>
       {err ? <p className="error">{err}</p> : null}
+
+      {waiting.length ? <h2 className="h2">Пора опубликовать</h2> : null}
+      <ul className="list">
+        {waiting.map((p) => (
+          <PostCard key={p.id} p={p} act={act} urls={urls} />
+        ))}
+      </ul>
 
       {upcoming.length ? <h2 className="h2">Запланировано и черновики</h2> : null}
       <ul className="list">
@@ -154,6 +165,11 @@ function PostCard({ p, onEdit, act, urls }: { p: PostView; onEdit?: () => void; 
           ))}
         </ul>
       ) : null}
+      {p.targets
+        .filter((t) => t.status === "manual")
+        .map((t) => (
+          <ManualPublish key={t.channelId} p={p} t={t} act={act} urls={urls} />
+        ))}
       <div className="row-gap">
         {editable && onEdit ? <button type="button" className="btn btn--soft" onClick={onEdit}>Изменить</button> : null}
         {p.status === "failed" || p.status === "partial" ? (
@@ -303,6 +319,44 @@ function PostEditor({
       <div className="row-gap">
         <button type="button" className="btn btn--soft" disabled={busy} onClick={() => void save("draft")}>Сохранить черновик</button>
         <button type="button" className="btn btn--ghost" onClick={onCancel}>Отмена</button>
+      </div>
+    </div>
+  );
+}
+
+/** Instagram: подпись в буфер + фото в «Поделиться», затем «Опубликовал» */
+function ManualPublish({ p, t, act, urls }: { p: PostView; t: PostTargetView; act: (fn: () => Promise<unknown>) => Promise<void>; urls: PostsApi }) {
+  const [step, setStep] = useState<"start" | "shared" | "copied">("start");
+  const [err, setErr] = useState("");
+  return (
+    <div className="manual">
+      <p className="small">
+        <strong>{t.title}:</strong>{" "}
+        {step === "start"
+          ? "нажмите кнопку — подпись скопируется, фото откроются в «Поделиться». Выберите Instagram и вставьте подпись."
+          : step === "shared"
+            ? "Опубликовали? Отметьте — пост перейдёт в «Опубликовано»."
+            : "Подпись скопирована. Сохраните фото (нажмите и удерживайте) и опубликуйте их в Instagram."}
+      </p>
+      {err ? <p className="error small">{err}</p> : null}
+      <div className="row-gap">
+        <button
+          type="button"
+          className="btn btn--primary"
+          onClick={() =>
+            void shareToInstagram(p.text, p.photos)
+              .then((r) => setStep(r === "shared" ? "shared" : "copied"))
+              .catch((e: Error) => {
+                if (e.name !== "AbortError") setErr(e.message);
+                setStep("shared");
+              })
+          }
+        >
+          Опубликовать в Instagram
+        </button>
+        <button type="button" className="btn btn--soft" onClick={() => void act(() => api(`${urls.item(p.id)}/targets/${t.channelId}/done`, { method: "POST", json: {} }))}>
+          Готово — опубликовал
+        </button>
       </div>
     </div>
   );

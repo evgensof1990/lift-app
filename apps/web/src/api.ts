@@ -145,6 +145,8 @@ export type Overview = {
   survey: SurveyProgress;
   tasks: TaskItem[];
   goals: GoalItem[];
+  /** посты, которые ждут ручной публикации (Instagram); есть только в ответе /api/me */
+  postsWaiting?: number;
   review: { pending: number; goals: number; tasks: number; points: number; reviewed: boolean };
   archive: { goals: (GoalItem & { tasks: TaskItem[] })[]; tasks: TaskItem[] };
   stages: StageItem[];

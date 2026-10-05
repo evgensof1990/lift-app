@@ -304,3 +304,8 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-
 .channel { border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 6px; }
 .channel__head { display: flex; flex-direction: column; }
 .tabbar__item { font-size: 10px; }
+.segmented--wrap { flex-wrap: wrap; }
+.segmented--wrap button { flex: 1 1 30%; }
+.manual { border: 1px solid var(--warn-line); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.manual .btn--primary { min-height: 48px; font-size: 15px; }
+.chip-target--manual { color: var(--warn); }

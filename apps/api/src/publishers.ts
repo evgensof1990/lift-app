@@ -118,3 +118,70 @@ export const maxPublisher = {
 export function filePath(id: string) {
   return path.join(config.uploadsDir, path.basename(id));
 }
+
+/* ——— Telegram: бот — администратор канала. Дзен забирает посты из этого канала сам (Синхробот Дзена) ——— */
+
+export type TgConfig = { botToken: string; chatId: string };
+
+/** Telegram в России работает с перебоями — адрес API можно заменить на свой прокси (TELEGRAM_API_BASE) */
+const TG_API = (process.env.TELEGRAM_API_BASE || "https://api.telegram.org").replace(/\/$/, "");
+const TG_CAPTION = 1024;
+
+async function tg(c: TgConfig, method: string, body: FormData | Record<string, unknown>) {
+  const isForm = body instanceof FormData;
+  const res = await fetch(`${TG_API}/bot${c.botToken}/${method}`, {
+    method: "POST",
+    headers: isForm ? undefined : { "Content-Type": "application/json" },
+    body: isForm ? body : JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}) as Record<string, unknown>);
+  if (!json.ok) throw new Error(`Telegram ${method}: ${json.description || `ошибка ${res.status}`}`);
+  return json.result as unknown;
+}
+
+/** @канал или числовой id */
+function tgChat(chatId: string) {
+  const v = chatId.trim().replace(/^https?:\/\/t\.me\//i, "");
+  return /^-?\d+$/.test(v) ? v : `@${v.replace(/^@/, "")}`;
+}
+
+function tgLink(chat: { username?: string }, messageId: number) {
+  return chat.username ? `https://t.me/${chat.username}/${messageId}` : "";
+}
+
+export const tgPublisher = {
+  async check(c: TgConfig) {
+    const me = (await tg(c, "getMe", {})) as { username: string };
+    const chat = (await tg(c, "getChat", { chat_id: tgChat(c.chatId) })) as { title?: string };
+    return `Бот @${me.username} → канал «${chat.title || c.chatId}»`;
+  },
+  async publish(c: TgConfig, p: PostPayload): Promise<PublishResult> {
+    const chatId = tgChat(c.chatId);
+    const chat = (await tg(c, "getChat", { chat_id: chatId })) as { username?: string };
+    const photos = p.photos.slice(0, 10);
+    // подпись к фото — до 1024 знаков; длинный текст уходит отдельным сообщением после фото
+    const captionFits = p.text.length <= TG_CAPTION;
+    let firstId = 0;
+    if (photos.length === 1) {
+      const form = new FormData();
+      form.append("chat_id", chatId);
+      if (captionFits && p.text) form.append("caption", p.text);
+      form.append("photo", new Blob([fs.readFileSync(photos[0].path)], { type: photos[0].mime }), photos[0].name);
+      firstId = ((await tg(c, "sendPhoto", form)) as { message_id: number }).message_id;
+    } else if (photos.length > 1) {
+      const form = new FormData();
+      form.append("chat_id", chatId);
+      form.append(
+        "media",
+        JSON.stringify(photos.map((_, i) => ({ type: "photo", media: `attach://p${i}`, ...(i === 0 && captionFits && p.text ? { caption: p.text } : {}) }))),
+      );
+      photos.forEach((ph, i) => form.append(`p${i}`, new Blob([fs.readFileSync(ph.path)], { type: ph.mime }), ph.name));
+      firstId = ((await tg(c, "sendMediaGroup", form)) as { message_id: number }[])[0].message_id;
+    }
+    if (p.text && (!photos.length || !captionFits)) {
+      const msg = (await tg(c, "sendMessage", { chat_id: chatId, text: p.text.slice(0, 4096) })) as { message_id: number };
+      firstId ||= msg.message_id;
+    }
+    return { url: tgLink(chat, firstId) };
+  },
+};

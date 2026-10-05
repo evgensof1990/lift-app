@@ -184,9 +184,11 @@ db.exec(`
 CREATE TABLE IF NOT EXISTS channels (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   pilot_id INTEGER NOT NULL REFERENCES pilots(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL CHECK (kind IN ('vk', 'max')),
+  kind TEXT NOT NULL CHECK (kind IN ('vk', 'max', 'tg', 'dzen', 'instagram')),
   title TEXT NOT NULL DEFAULT '',
-  -- vk: { groupId, token } (ключ администратора сообщества); max: { botToken, chatId }
+  -- vk: { groupId, token } (ключ администратора сообщества); max и tg: { botToken, chatId };
+  -- dzen: { account } — Дзен сам забирает посты из Telegram-канала («Синхробот Дзена»);
+  -- instagram: { account } — публикует пилот в одно касание («Поделиться»), API Meta не используем
   config TEXT NOT NULL DEFAULT '{}',
   enabled INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -198,7 +200,8 @@ CREATE TABLE IF NOT EXISTS posts (
   text TEXT NOT NULL DEFAULT '',
   photos TEXT NOT NULL DEFAULT '[]',      -- JSON: id файлов из таблицы files
   publish_at TEXT,                        -- ISO-время UTC; NULL у черновика
-  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'scheduled', 'publishing', 'done', 'partial', 'failed')),
+  -- waiting — автоматические каналы готовы, ждём ручную публикацию пилота (Instagram)
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'scheduled', 'publishing', 'waiting', 'done', 'partial', 'failed')),
   created_by TEXT NOT NULL DEFAULT 'pilot',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -207,7 +210,8 @@ CREATE TABLE IF NOT EXISTS posts (
 CREATE TABLE IF NOT EXISTS post_targets (
   post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
   channel_id INTEGER NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'failed')),
+  -- manual — пора публиковать вручную (Instagram), пилот отмечает «Опубликовал»
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'manual', 'sent', 'failed')),
   url TEXT NOT NULL DEFAULT '',
   error TEXT NOT NULL DEFAULT '',
   attempts INTEGER NOT NULL DEFAULT 0,
@@ -216,7 +220,7 @@ CREATE TABLE IF NOT EXISTS post_targets (
 );
 `);
 
-export type ChannelKind = "vk" | "max";
+export type ChannelKind = "vk" | "max" | "tg" | "dzen" | "instagram";
 
 export type Channel = {
   id: number;
@@ -234,7 +238,7 @@ export type Post = {
   text: string;
   photos: string;
   publish_at: string | null;
-  status: "draft" | "scheduled" | "publishing" | "done" | "partial" | "failed";
+  status: "draft" | "scheduled" | "publishing" | "waiting" | "done" | "partial" | "failed";
   created_by: "pilot" | "team";
   created_at: string;
   updated_at: string;
@@ -243,7 +247,7 @@ export type Post = {
 export type PostTarget = {
   post_id: number;
   channel_id: number;
-  status: "pending" | "sent" | "failed";
+  status: "pending" | "manual" | "sent" | "failed";
   url: string;
   error: string;
   attempts: number;

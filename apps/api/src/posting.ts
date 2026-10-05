@@ -5,7 +5,7 @@
  */
 import { config } from "./config.js";
 import { db, type Channel, type ChannelKind, type Post, type PostTarget } from "./db.js";
-import { filePath, maxPublisher, vkPublisher, type MaxConfig, type PostPayload, type VkConfig } from "./publishers.js";
+import { filePath, maxPublisher, tgPublisher, vkPublisher, type MaxConfig, type PostPayload, type TgConfig, type VkConfig } from "./publishers.js";
 
 const MAX_ATTEMPTS = 3;
 const str = (v: unknown, max = 500) => String(v ?? "").trim().slice(0, max);
@@ -20,7 +20,16 @@ function parse<T>(json: string, fallback: T): T {
 
 /* ——— каналы ——— */
 
-export const CHANNEL_LABEL: Record<ChannelKind, string> = { vk: "ВКонтакте", max: "MAX" };
+export const CHANNEL_LABEL: Record<ChannelKind, string> = {
+  vk: "ВКонтакте",
+  max: "MAX",
+  tg: "Telegram",
+  dzen: "Дзен",
+  instagram: "Instagram",
+};
+const KINDS = Object.keys(CHANNEL_LABEL) as ChannelKind[];
+/** Каналы без ключей: Дзен (через Telegram) и Instagram (публикует пилот в одно касание) */
+const NO_TOKEN: ChannelKind[] = ["dzen", "instagram"];
 
 /** Без ключей: в браузер уходит только то, что можно показать */
 export function channelView(c: Channel) {
@@ -30,8 +39,9 @@ export function channelView(c: Channel) {
     kind: c.kind,
     title: c.title || CHANNEL_LABEL[c.kind],
     enabled: !!c.enabled,
-    target: c.kind === "vk" ? cfg.groupId || "" : cfg.chatId || "",
-    hasToken: !!(c.kind === "vk" ? cfg.token : cfg.botToken),
+    target: c.kind === "vk" ? cfg.groupId || "" : NO_TOKEN.includes(c.kind) ? cfg.account || "" : cfg.chatId || "",
+    hasToken: NO_TOKEN.includes(c.kind) || !!(c.kind === "vk" ? cfg.token : cfg.botToken),
+    manual: c.kind === "instagram",
   };
 }
 
@@ -39,9 +49,10 @@ export function listChannels(pilotId: number) {
   return db.prepare("SELECT * FROM channels WHERE pilot_id = ? ORDER BY id").all(pilotId) as Channel[];
 }
 
-function channelConfig(kind: ChannelKind, b: Record<string, unknown>, prev: Record<string, string>) {
+function channelConfig(kind: ChannelKind, b: Record<string, unknown>, prev: Record<string, string>): Record<string, string> {
   // пустое поле ключа при правке = оставить прежний ключ
   if (kind === "vk") return { groupId: str(b.target, 100), token: str(b.token, 500) || prev.token || "" };
+  if (NO_TOKEN.includes(kind)) return { account: str(b.target, 100) };
   return { chatId: str(b.target, 100), botToken: str(b.token, 500) || prev.botToken || "" };
 }
 
@@ -49,11 +60,13 @@ export function saveChannel(pilotId: number, b: Record<string, unknown>, id?: nu
   const prev = id ? (db.prepare("SELECT * FROM channels WHERE id = ? AND pilot_id = ?").get(id, pilotId) as Channel | undefined) : undefined;
   if (id && !prev) return { error: "Канал не найден" };
   const kind = (prev?.kind || str(b.kind)) as ChannelKind;
-  if (kind !== "vk" && kind !== "max") return { error: "Неизвестный тип канала" };
+  if (!KINDS.includes(kind)) return { error: "Неизвестный тип канала" };
   const cfg = channelConfig(kind, b, parse(prev?.config || "{}", {}));
-  const target = kind === "vk" ? (cfg as VkConfig).groupId : (cfg as MaxConfig).chatId;
-  const token = kind === "vk" ? (cfg as VkConfig).token : (cfg as MaxConfig).botToken;
-  if (!target || !token) return { error: kind === "vk" ? "Нужны сообщество и ключ доступа" : "Нужны ID канала и токен бота" };
+  const target = cfg.groupId || cfg.chatId || cfg.account || "";
+  const token = NO_TOKEN.includes(kind) ? "-" : cfg.token || cfg.botToken || "";
+  if (!target || !token) {
+    return { error: kind === "vk" ? "Нужны сообщество и ключ доступа" : NO_TOKEN.includes(kind) ? "Укажите аккаунт" : "Нужны канал и токен бота" };
+  }
   const title = str(b.title, 100);
   const enabled = b.enabled === false ? 0 : 1;
   if (prev) {
@@ -66,7 +79,15 @@ export function saveChannel(pilotId: number, b: Record<string, unknown>, id?: nu
 
 export async function checkChannel(c: Channel) {
   const cfg = parse<Record<string, string>>(c.config, {});
-  return c.kind === "vk" ? vkPublisher.check(cfg as VkConfig) : maxPublisher.check(cfg as MaxConfig);
+  if (c.kind === "vk") return vkPublisher.check(cfg as VkConfig);
+  if (c.kind === "max") return maxPublisher.check(cfg as MaxConfig);
+  if (c.kind === "tg") return tgPublisher.check(cfg as TgConfig);
+  if (c.kind === "dzen") {
+    const tg = listChannels(c.pilot_id).find((x) => x.kind === "tg" && x.enabled);
+    if (!tg) throw new Error("Подключите Telegram-канал: Дзен забирает посты из него через «Синхробот Дзена»");
+    return `Посты придут в Дзен из Telegram «${tg.title || "Telegram"}» — если Синхробот Дзена подключён к каналу`;
+  }
+  return "Ключи не нужны: в назначенное время пилот публикует в одно касание из приложения";
 }
 
 /* ——— посты ——— */
@@ -144,8 +165,15 @@ export function savePost(pilotId: number, b: PostInput, createdBy: "pilot" | "te
   if (!text && !photos.length) return { error: "Добавьте текст или фото" };
 
   const mode = b.mode === "now" || b.mode === "schedule" ? b.mode : "draft";
-  const own = new Set(listChannels(pilotId).filter((c) => c.enabled).map((c) => c.id));
+  const enabled = listChannels(pilotId).filter((c) => c.enabled);
+  const own = new Set(enabled.map((c) => c.id));
   const channelIds = Array.isArray(b.channelIds) ? [...new Set(b.channelIds.map(Number))].filter((x) => own.has(x)) : [];
+  // Дзен получает пост через Telegram-канал — значит, в Telegram он тоже должен уйти
+  if (enabled.some((c) => c.kind === "dzen" && channelIds.includes(c.id))) {
+    const tg = enabled.find((c) => c.kind === "tg");
+    if (!tg) return { error: "Для Дзена нужен подключённый Telegram-канал" };
+    if (!channelIds.includes(tg.id)) channelIds.push(tg.id);
+  }
   if (mode !== "draft" && !channelIds.length) return { error: "Выберите, куда публиковать" };
 
   let publishAt: string | null = null;
@@ -223,14 +251,36 @@ async function publishPost(p: Post) {
   db.prepare("UPDATE posts SET status = 'publishing' WHERE id = ?").run(p.id);
   const photos = photoRows(p.pilot_id, parse<string[]>(p.photos, [])).map((f) => ({ path: filePath(f.id), name: f.original_name, mime: f.mime }));
   const payload: PostPayload = { text: p.text, photos };
-  const targets = db
-    .prepare("SELECT t.*, c.kind, c.config, c.enabled FROM post_targets t JOIN channels c ON c.id = t.channel_id WHERE t.post_id = ? AND t.status = 'pending'")
-    .all(p.id) as (PostTarget & { kind: ChannelKind; config: string; enabled: number })[];
+  const targets = (
+    db
+      .prepare("SELECT t.*, c.kind, c.config, c.enabled FROM post_targets t JOIN channels c ON c.id = t.channel_id WHERE t.post_id = ? AND t.status = 'pending'")
+      .all(p.id) as (PostTarget & { kind: ChannelKind; config: string; enabled: number })[]
+  ).sort((a, b) => Number(a.kind === "dzen") - Number(b.kind === "dzen")); // Дзен — после Telegram
+  const setTarget = db.prepare("UPDATE post_targets SET status = ?, url = ?, error = ?, sent_at = ? WHERE post_id = ? AND channel_id = ?");
   for (const t of targets) {
+    if (t.kind === "instagram") {
+      // публикует пилот: в приложении появляется кнопка «Опубликовать в Instagram»
+      setTarget.run("manual", "", "", null, p.id, t.channel_id);
+      continue;
+    }
+    if (t.kind === "dzen") {
+      const tgSent = db
+        .prepare("SELECT t.status FROM post_targets t JOIN channels c ON c.id = t.channel_id WHERE t.post_id = ? AND c.kind = 'tg'")
+        .get(p.id) as { status: string } | undefined;
+      if (tgSent?.status === "pending") continue; // Telegram ещё повторяется — Дзен ждёт
+      if (tgSent?.status === "sent") setTarget.run("sent", "", "", new Date().toISOString().slice(0, 19).replace("T", " "), p.id, t.channel_id);
+      else setTarget.run("failed", "", "Не ушло в Telegram — Дзен берёт посты оттуда", null, p.id, t.channel_id);
+      continue;
+    }
     try {
       if (!t.enabled) throw new Error("Канал выключен");
       const cfg = parse<Record<string, string>>(t.config, {});
-      const r = t.kind === "vk" ? await vkPublisher.publish(cfg as VkConfig, payload) : await maxPublisher.publish(cfg as MaxConfig, payload);
+      const r =
+        t.kind === "vk"
+          ? await vkPublisher.publish(cfg as VkConfig, payload)
+          : t.kind === "tg"
+            ? await tgPublisher.publish(cfg as TgConfig, payload)
+            : await maxPublisher.publish(cfg as MaxConfig, payload);
       db.prepare("UPDATE post_targets SET status = 'sent', url = ?, error = '', attempts = attempts + 1, sent_at = datetime('now') WHERE post_id = ? AND channel_id = ?").run(
         r.url,
         p.id,
@@ -248,11 +298,43 @@ async function publishPost(p: Post) {
       console.warn(`[posting] пост ${p.id}, канал ${t.channel_id}: ${(e as Error).message}`);
     }
   }
-  const all = db.prepare("SELECT status FROM post_targets WHERE post_id = ?").all(p.id) as { status: string }[];
-  const sent = all.filter((x) => x.status === "sent").length;
-  const pending = all.filter((x) => x.status === "pending").length;
-  const status = pending ? "scheduled" : sent === all.length ? "done" : sent ? "partial" : "failed";
-  db.prepare("UPDATE posts SET status = ?, updated_at = datetime('now') WHERE id = ?").run(status, p.id);
+  updateStatus(p.id);
+}
+
+/** Итог поста по его каналам */
+function updateStatus(postId: number) {
+  const all = db.prepare("SELECT status FROM post_targets WHERE post_id = ?").all(postId) as { status: string }[];
+  const n = (s: string) => all.filter((x) => x.status === s).length;
+  const status = n("pending")
+    ? "scheduled"
+    : n("manual")
+      ? "waiting"
+      : n("sent") === all.length
+        ? "done"
+        : n("sent")
+          ? "partial"
+          : "failed";
+  db.prepare("UPDATE posts SET status = ?, updated_at = datetime('now') WHERE id = ?").run(status, postId);
+}
+
+/** Пилот опубликовал вручную (Instagram) — по желанию со ссылкой на пост */
+export function markManual(pilotId: number, postId: number, channelId: number, url: unknown) {
+  const link = str(url, 500);
+  const r = db
+    .prepare(
+      `UPDATE post_targets SET status = 'sent', url = ?, error = '', sent_at = datetime('now')
+       WHERE post_id = ? AND channel_id = ? AND status = 'manual'
+         AND post_id IN (SELECT id FROM posts WHERE pilot_id = ?)`,
+    )
+    .run(/^https?:\/\//i.test(link) ? link : "", postId, channelId, pilotId);
+  if (!r.changes) return { error: "Нечего отмечать" };
+  updateStatus(postId);
+  return { ok: true };
+}
+
+/** Сколько постов ждут ручной публикации пилота */
+export function waitingCount(pilotId: number) {
+  return (db.prepare("SELECT COUNT(*) AS n FROM posts WHERE pilot_id = ? AND status = 'waiting'").get(pilotId) as { n: number }).n;
 }
 
 export function startScheduler() {

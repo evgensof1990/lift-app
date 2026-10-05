@@ -30,17 +30,41 @@ function pilotOr404(id: number, res: Response) {
 }
 
 /** Список пилотов для таблицы команды */
+/**
+ * Где сейчас пилот и чей ход. tone: action — нужен администратор, warn — проблема, wait — ждём пилота, ok — всё идёт.
+ * Порядок проверок = путь пилота: приглашение → анкета → стратегия → согласование → работа.
+ */
+function pilotStatus(s: {
+  joined: boolean;
+  survey: { requiredDone: number; requiredTotal: number; complete: boolean };
+  hasPlan: boolean;
+  review: number;
+  overdue: number;
+  floor: number;
+}): { label: string; tone: "action" | "warn" | "wait" | "ok" } {
+  if (!s.joined) return { label: "Не входил — отправьте приглашение", tone: "wait" };
+  if (!s.hasPlan && !s.survey.complete) return { label: `Заполняет анкету: ${s.survey.requiredDone} из ${s.survey.requiredTotal} обязательных`, tone: "wait" };
+  if (!s.hasPlan) return { label: "Анкета готова — нужна стратегия", tone: "action" };
+  if (s.review) return { label: "Согласовывает стратегию", tone: "wait" };
+  if (s.overdue) return { label: `В работе · просрочено: ${s.overdue}`, tone: "warn" };
+  return { label: `В работе · этаж ${s.floor}`, tone: "ok" };
+}
+
 teamRouter.get("/pilots", (_req, res) => {
   const pilots = db.prepare("SELECT * FROM pilots WHERE archived = 0 ORDER BY id").all() as Pilot[];
   const stageOf = db.prepare(
     "SELECT title FROM stages WHERE pilot_id = ? AND status = 'current' ORDER BY sort_order, id LIMIT 1",
   );
+  const planSize = db.prepare("SELECT (SELECT COUNT(*) FROM goals WHERE pilot_id = ?) + (SELECT COUNT(*) FROM tasks WHERE pilot_id = ?) AS n");
   res.json({
     pilots: pilots.map((p) => {
       const o = pilotOverview(p);
       const open = o.tasks.filter((t) => !t.doneAt);
       const nearest = open.find((t) => t.dueDate);
+      const overdue = open.filter((t) => t.overdue).length;
+      const hasPlan = (planSize.get(p.id, p.id) as { n: number }).n > 0;
       return {
+        status: pilotStatus({ joined: !!p.consent_at, survey: o.survey, hasPlan, review: o.review.pending, overdue, floor: o.game.floor }),
         id: p.id,
         name: p.name,
         business: p.business,
@@ -50,7 +74,7 @@ teamRouter.get("/pilots", (_req, res) => {
         points: o.game.points,
         tasksDone: o.tasks.filter((t) => t.doneAt).length,
         tasksTotal: o.tasks.length,
-        overdue: open.filter((t) => t.overdue).length,
+        overdue,
         nearest: nearest ? { title: nearest.title, dueDate: nearest.dueDate, overdue: nearest.overdue } : null,
         review: o.review.pending,
         archived: o.archive.goals.length + o.archive.tasks.length,

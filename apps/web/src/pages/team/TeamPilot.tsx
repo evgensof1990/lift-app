@@ -526,13 +526,62 @@ function ToolsTab({ d, reload }: TabProps) {
   );
 }
 
+const fmtAnswer = (v: unknown) => (Array.isArray(v) ? v.join(", ") : typeof v === "string" ? v : "");
+
+/** Вся анкета одним текстом — чтобы по ней составить стратегию (вставить в чат с ИИ или в документ) */
+function surveyText(d: Detail) {
+  const origin = window.location.origin;
+  const p = d.pilot;
+  const lines = [
+    `АНКЕТА ПИЛОТА «ЛИФТ»: ${[p.business, p.name].filter(Boolean).join(" — ")}`,
+    p.niche ? `Ниша: ${p.niche}` : "",
+    `Заполнено ${d.survey.answered} из ${d.survey.total}, обязательных ${d.survey.requiredDone} из ${d.survey.requiredTotal}`,
+  ].filter(Boolean);
+  for (const s of d.surveySections) {
+    lines.push("", `## ${s.title}`);
+    for (const q of s.questions) {
+      const v = d.answers[q.id];
+      let a: string;
+      if (q.type === "files") {
+        const files = (Array.isArray(v) ? v : []).map((fid) => d.files[fid]).filter(Boolean);
+        a = files.length ? files.map((f) => `${f.name} — ${origin}${f.url}`).join("\n   ") : "—";
+      } else {
+        a = fmtAnswer(v).trim() || "—";
+      }
+      lines.push(`${q.id.slice(1)}. ${q.title}`, `   ${a.replace(/\n/g, "\n   ")}`);
+    }
+  }
+  return lines.join("\n");
+}
+
 function SurveyTab({ d }: { d: Detail }) {
-  const fmt = (v: unknown) => (Array.isArray(v) ? v.join(", ") : typeof v === "string" ? v : "");
+  const fmt = fmtAnswer;
+  const [copied, setCopied] = useState<"" | "ok" | "manual">("");
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(surveyText(d));
+      setCopied("ok");
+    } catch {
+      setCopied("manual");
+    }
+  }
   return (
     <div className="stack">
-      <p className="muted">
-        Заполнено {d.survey.answered} из {d.survey.total} · обязательных {d.survey.requiredDone} из {d.survey.requiredTotal}
-      </p>
+      <div className="card stack">
+        <p className="muted">
+          Заполнено {d.survey.answered} из {d.survey.total} · обязательных {d.survey.requiredDone} из {d.survey.requiredTotal}
+        </p>
+        <button type="button" className="btn btn--primary" disabled={!d.survey.answered} onClick={() => void copy()}>
+          Скопировать анкету для стратегии
+        </button>
+        {copied === "ok" ? <p className="ok">Скопировано — вставьте в чат, где составляем стратегию.</p> : null}
+        {copied === "manual" ? (
+          <>
+            <p className="muted small">Браузер не дал скопировать автоматически — выделите текст ниже и скопируйте.</p>
+            <textarea className="copy-box" readOnly rows={10} value={surveyText(d)} onFocus={(e) => e.currentTarget.select()} />
+          </>
+        ) : null}
+      </div>
       {d.surveySections.map((s) => (
         <section key={s.id} className="card stack">
           <h2 className="h2">{s.title}</h2>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   api,
   dueLabel,
@@ -41,7 +41,9 @@ const TABS: [Tab, string][] = [
 export default function TeamPilot() {
   const { id = "" } = useParams();
   const [d, setD] = useState<Detail | null>(null);
-  const [tab, setTab] = useState<Tab>("profile");
+  const [search] = useSearchParams();
+  // ?tab=posts — возврат из входа ВКонтакте
+  const [tab, setTab] = useState<Tab>(() => TABS.find(([k]) => k === search.get("tab"))?.[0] ?? "profile");
   const [err, setErr] = useState("");
 
   const load = useCallback(async () => {

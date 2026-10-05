@@ -309,3 +309,6 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-
 .manual { border: 1px solid var(--warn-line); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
 .manual .btn--primary { min-height: 48px; font-size: 15px; }
 .chip-target--manual { color: var(--warn); }
+.chat-pick { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.chat-pick__item { width: 100%; min-height: 48px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg-2); color: var(--text); cursor: pointer; text-align: left; }
+.chat-pick__item.on { border-color: var(--violet); background: var(--card-2); }

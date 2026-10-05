@@ -8,9 +8,10 @@ import { isOverdue } from "../game.js";
 import { parseStrategy, publicTask } from "../model.js";
 import { importStrategy } from "../strategy.js";
 import { registerUploads, upload } from "../answers.js";
-import { channelView, checkChannel, deletePost, listChannels, listPosts, markManual, retryPost, saveChannel, savePost } from "../posting.js";
+import { channelView, checkChannel, maxBotChats, deletePost, listChannels, listPosts, markManual, retryPost, saveChannel, savePost } from "../posting.js";
 import type { Channel, Post } from "../db.js";
 import { SURVEY, surveyProgress } from "../survey.js";
+import { vkAuthUrl } from "../vk-id.js";
 
 export const teamRouter = Router();
 teamRouter.use(requireTeam);
@@ -383,4 +384,26 @@ teamRouter.post("/posts/:id/targets/:channelId/done", (req, res) => {
   const id = Number(req.params.id);
   const r = markManual(postPilot(id), id, Number(req.params.channelId), req.body?.url);
   res.status("error" in r ? 400 : 200).json(r);
+});
+
+/** «Найти каналы бота» MAX: { token } из формы или { channelId } уже сохранённого канала */
+teamRouter.post("/pilots/:id/max-chats", async (req, res) => {
+  const p = pilotOr404(Number(req.params.id), res);
+  if (!p) return;
+  try {
+    res.json({ chats: await maxBotChats(p.id, String(req.body?.token || ""), Number(req.body?.channelId) || undefined) });
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+});
+
+/** «Подключить через ВКонтакте»: адрес входа VK ID; ответ ВК придёт на /vk/callback */
+teamRouter.post("/pilots/:id/vk-auth", (req, res) => {
+  const p = pilotOr404(Number(req.params.id), res);
+  if (!p) return;
+  try {
+    res.json({ url: vkAuthUrl(p.id, { channelId: Number(req.body?.channelId) || undefined, title: req.body?.title, target: req.body?.target }) });
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
 });

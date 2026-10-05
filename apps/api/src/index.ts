@@ -9,6 +9,7 @@ import { pilotRouter } from "./routes/pilot.js";
 import { teamRouter } from "./routes/team.js";
 import { privacyPage } from "./privacy.js";
 import { startScheduler } from "./posting.js";
+import { callbackPage, vkCallback } from "./vk-id.js";
 
 const app = express();
 app.set("trust proxy", "loopback");
@@ -39,6 +40,25 @@ app.get("/files/:id", (req, res) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(f.original_name)}`);
   res.sendFile(path.join(config.uploadsDir, id));
+});
+
+/** Возврат из VK ID после «Подключить через ВКонтакте» (адрес указан в приложении VK ID как доверенный) */
+app.get("/vk/callback", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  try {
+    const r = await vkCallback(req.query);
+    res.type("html").send(
+      callbackPage(
+        true,
+        r.hasWall
+          ? "Посты пилота будут публиковаться в сообщество автоматически."
+          : "Вход прошёл, но ВК пока не дал право публиковать на стене (wall). Когда поддержка VK ID откроет доступ — подключите ещё раз.",
+        r.pilotId,
+      ),
+    );
+  } catch (e) {
+    res.status(400).type("html").send(callbackPage(false, (e as Error).message));
+  }
 });
 
 app.get("/privacy", (_req, res) => {

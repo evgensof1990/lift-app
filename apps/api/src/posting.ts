@@ -5,6 +5,7 @@
  */
 import { config } from "./config.js";
 import { db, type Channel, type ChannelKind, type Post, type PostTarget } from "./db.js";
+import { freshVkConfig } from "./vk-id.js";
 import { filePath, maxPublisher, tgPublisher, vkPublisher, type MaxConfig, type PostPayload, type TgConfig, type VkConfig } from "./publishers.js";
 
 const MAX_ATTEMPTS = 3;
@@ -42,6 +43,9 @@ export function channelView(c: Channel) {
     target: c.kind === "vk" ? cfg.groupId || "" : NO_TOKEN.includes(c.kind) ? cfg.account || "" : cfg.chatId || "",
     hasToken: NO_TOKEN.includes(c.kind) || !!(c.kind === "vk" ? cfg.token : cfg.botToken),
     manual: c.kind === "instagram",
+    /** ВК подключён через VK ID; wall — ВК разрешил публикацию на стене */
+    vkid: c.kind === "vk" && !!cfg.refreshToken,
+    vkWall: c.kind === "vk" && !!cfg.refreshToken ? cfg.scope.split(/[\s,]+/).includes("wall") : undefined,
   };
 }
 
@@ -51,7 +55,11 @@ export function listChannels(pilotId: number) {
 
 function channelConfig(kind: ChannelKind, b: Record<string, unknown>, prev: Record<string, string>): Record<string, string> {
   // пустое поле ключа при правке = оставить прежний ключ
-  if (kind === "vk") return { groupId: str(b.target, 100), token: str(b.token, 500) || prev.token || "" };
+  if (kind === "vk") {
+    const token = str(b.token, 500);
+    // новый ключ вставлен вручную — VK ID-ключи (refresh) больше не нужны; иначе сохраняем всё прежнее
+    return token ? { groupId: str(b.target, 100), token } : { ...prev, groupId: str(b.target, 100), token: prev.token || "" };
+  }
   if (NO_TOKEN.includes(kind)) return { account: str(b.target, 100) };
   return { chatId: str(b.target, 100), botToken: str(b.token, 500) || prev.botToken || "" };
 }
@@ -79,7 +87,14 @@ export function saveChannel(pilotId: number, b: Record<string, unknown>, id?: nu
 
 export async function checkChannel(c: Channel) {
   const cfg = parse<Record<string, string>>(c.config, {});
-  if (c.kind === "vk") return vkPublisher.check(cfg as VkConfig);
+  if (c.kind === "vk") {
+    const fresh = await freshVkConfig(c);
+    const info = await vkPublisher.check(fresh as VkConfig);
+    if (fresh.refreshToken && !fresh.scope.split(/[\s,]+/).includes("wall")) {
+      throw new Error(`${info} найдено, но ВК пока не дал право публиковать на стене (wall). Ждём ответ поддержки VK ID, потом нажмите «Изменить» → «Подключить через ВКонтакте» ещё раз.`);
+    }
+    return info;
+  }
   if (c.kind === "max") return maxPublisher.check(cfg as MaxConfig);
   if (c.kind === "tg") return tgPublisher.check(cfg as TgConfig);
   if (c.kind === "dzen") {
@@ -277,7 +292,7 @@ async function publishPost(p: Post) {
       const cfg = parse<Record<string, string>>(t.config, {});
       const r =
         t.kind === "vk"
-          ? await vkPublisher.publish(cfg as VkConfig, payload)
+          ? await vkPublisher.publish((await freshVkConfig({ id: t.channel_id, config: t.config })) as VkConfig, payload)
           : t.kind === "tg"
             ? await tgPublisher.publish(cfg as TgConfig, payload)
             : await maxPublisher.publish(cfg as MaxConfig, payload);
@@ -346,4 +361,15 @@ export function startScheduler() {
   db.prepare("UPDATE posts SET status = 'scheduled' WHERE status = 'publishing'").run();
   setInterval(() => void runDue(), 60 * 1000).unref();
   setTimeout(() => void runDue(), 5000).unref();
+}
+
+/** Каналы MAX, куда добавлен бот (по токену из формы или по сохранённому каналу) */
+export async function maxBotChats(pilotId: number, token: string, channelId?: number) {
+  let botToken = token.trim();
+  if (!botToken && channelId) {
+    const c = db.prepare("SELECT * FROM channels WHERE id = ? AND pilot_id = ? AND kind = 'max'").get(channelId, pilotId) as Channel | undefined;
+    botToken = parse<Record<string, string>>(c?.config || "{}", {}).botToken || "";
+  }
+  if (!botToken) throw new Error("Сначала вставьте токен бота");
+  return maxPublisher.listChats(botToken);
 }

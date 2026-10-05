@@ -24,6 +24,8 @@ export const config = {
   operatorEmail: (process.env.OPERATOR_EMAIL || "").trim(),
   /** MAX Bot API (для автопостинга в каналы MAX; нужен NODE_EXTRA_CA_CERTS с сертификатами Минцифры) */
   maxApiBase: (process.env.MAX_API_BASE || "https://platform-api2.max.ru").replace(/\/$/, ""),
+  /** ID приложения VK ID (id.vk.com/business) — кнопка «Подключить через ВКонтакте». Не секрет. */
+  vkClientId: (process.env.VK_CLIENT_ID || "54806088").trim(),
   /** Выключить планировщик автопостинга (например, на тестовой копии) */
   postingDisabled: process.env.POSTING_DISABLED === "true",
 };

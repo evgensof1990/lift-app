@@ -2,7 +2,7 @@ import { Router, type Response } from "express";
 import { randomToken, requireTeam } from "../auth.js";
 import { config } from "../config.js";
 import { db, type Goal, type Pilot, type Task } from "../db.js";
-import { filesInfo } from "../answers.js";
+import { filesInfo, saveAnswers } from "../answers.js";
 import { getAnswers, getPilot, listGoals, listRequests, listTasks, pilotOverview } from "../pilot-data.js";
 import { isOverdue } from "../game.js";
 import { parseStrategy, publicTask } from "../model.js";
@@ -470,4 +470,27 @@ teamRouter.post("/strategy-requests/:id/resolve", (req, res) => {
   const answer = String(req.body?.answer ?? "").trim().slice(0, 3000);
   db.prepare("UPDATE strategy_requests SET status = 'done', answer = ?, resolved_at = datetime('now') WHERE id = ?").run(answer, Number(req.params.id));
   res.json({ ok: true });
+});
+
+/**
+ * Загрузить ответы анкеты, собранные вне приложения (Google Форма, переписка): { answers: { q1: "…" }, sent: true }.
+ * Ответы проверяются как в приложении (варианты выбора — только из списка); sent — анкета сразу «у команды».
+ */
+teamRouter.post("/pilots/:id/survey/import", (req, res) => {
+  const p = pilotOr404(Number(req.params.id), res);
+  if (!p) return;
+  const raw = req.body?.answers;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    res.status(400).json({ error: "Нужен JSON вида {\"answers\": {\"q1\": \"…\"}}" });
+    return;
+  }
+  const r = saveAnswers(p.id, raw);
+  if ("error" in r) {
+    res.status(400).json(r);
+    return;
+  }
+  const saved = getAnswers(p.id);
+  const skipped = Object.keys(raw).filter((k) => !(k in saved));
+  if (req.body?.sent) db.prepare("UPDATE pilots SET survey_sent_at = COALESCE(survey_sent_at, datetime('now')) WHERE id = ?").run(p.id);
+  res.json({ saved: r.saved, skipped });
 });

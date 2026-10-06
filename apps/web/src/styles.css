@@ -345,3 +345,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-
 .sr__answer { white-space: pre-wrap; color: var(--violet-text); font-size: 14px; }
 .check--top { align-items: flex-start; font-weight: 400; color: var(--text); }
 .check--top input { margin-top: 2px; flex: none; }
+
+/* Подсказка «на экран Домой» для айфона */
+.install__steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; color: var(--text-2); font-size: 14px; }
+.install__icon { display: inline-block; padding: 0 6px; border-radius: 6px; background: var(--card-2); color: var(--violet-text); }

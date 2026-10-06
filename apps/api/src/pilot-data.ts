@@ -1,5 +1,18 @@
-import { db, type Goal, type Pilot, type Stage, type Task, type Tool } from "./db.js";
+import { db, type Goal, type Pilot, type Stage, type StrategyRequest, type Task, type Tool } from "./db.js";
 import { buildOverview, buildReview } from "./model.js";
+
+export function listRequests(pilotId: number) {
+  const rows = db.prepare("SELECT * FROM strategy_requests WHERE pilot_id = ? ORDER BY id DESC LIMIT 100").all(pilotId) as StrategyRequest[];
+  return rows.map((r) => ({
+    id: r.id,
+    goalTitle: r.goal_title,
+    text: r.text,
+    status: r.status,
+    answer: r.answer,
+    createdAt: r.created_at,
+    resolvedAt: r.resolved_at,
+  }));
+}
 
 export function getPilot(id: number) {
   return db.prepare("SELECT * FROM pilots WHERE id = ?").get(id) as Pilot | undefined;

@@ -3,7 +3,7 @@ import { randomToken, requireTeam } from "../auth.js";
 import { config } from "../config.js";
 import { db, type Goal, type Pilot, type Task } from "../db.js";
 import { filesInfo } from "../answers.js";
-import { getAnswers, getPilot, listGoals, listTasks, pilotOverview } from "../pilot-data.js";
+import { getAnswers, getPilot, listGoals, listRequests, listTasks, pilotOverview } from "../pilot-data.js";
 import { isOverdue } from "../game.js";
 import { parseStrategy, publicTask } from "../model.js";
 import { importStrategy } from "../strategy.js";
@@ -41,8 +41,10 @@ function pilotStatus(s: {
   review: number;
   overdue: number;
   floor: number;
+  requests: number;
 }): { label: string; tone: "action" | "warn" | "wait" | "ok" } {
   if (!s.joined) return { label: "Не входил — отправьте приглашение", tone: "wait" };
+  if (s.requests) return { label: `Просит поправить стратегию: ${s.requests}`, tone: "action" };
   if (!s.hasPlan && !s.survey.complete) return { label: `Заполняет анкету: ${s.survey.requiredDone} из ${s.survey.requiredTotal} обязательных`, tone: "wait" };
   if (!s.hasPlan) return { label: "Анкета готова — нужна стратегия", tone: "action" };
   if (s.review) return { label: "Согласовывает стратегию", tone: "wait" };
@@ -55,6 +57,7 @@ teamRouter.get("/pilots", (_req, res) => {
   const stageOf = db.prepare(
     "SELECT title FROM stages WHERE pilot_id = ? AND status = 'current' ORDER BY sort_order, id LIMIT 1",
   );
+  const openRequests = db.prepare("SELECT COUNT(*) AS n FROM strategy_requests WHERE pilot_id = ? AND status = 'open'");
   const planSize = db.prepare("SELECT (SELECT COUNT(*) FROM goals WHERE pilot_id = ?) + (SELECT COUNT(*) FROM tasks WHERE pilot_id = ?) AS n");
   res.json({
     pilots: pilots.map((p) => {
@@ -64,7 +67,15 @@ teamRouter.get("/pilots", (_req, res) => {
       const overdue = open.filter((t) => t.overdue).length;
       const hasPlan = (planSize.get(p.id, p.id) as { n: number }).n > 0;
       return {
-        status: pilotStatus({ joined: !!p.consent_at, survey: o.survey, hasPlan, review: o.review.pending, overdue, floor: o.game.floor }),
+        status: pilotStatus({
+          joined: !!p.consent_at,
+          survey: o.survey,
+          hasPlan,
+          review: o.review.pending,
+          overdue,
+          floor: o.game.floor,
+          requests: (openRequests.get(p.id) as { n: number }).n,
+        }),
         id: p.id,
         name: p.name,
         business: p.business,
@@ -122,6 +133,7 @@ teamRouter.get("/pilots/:id", (req, res) => {
     answers,
     files: filesInfo(p.id, answers),
     surveyProgress: surveyProgress(answers, p.survey_sent_at),
+    requests: listRequests(p.id),
   });
 });
 
@@ -274,6 +286,14 @@ teamRouter.post("/pilots/:id/strategy", (req, res) => {
   if (typeof parsed === "string") {
     res.status(400).json({ error: parsed });
     return;
+  }
+  if (req.body?.replace === true) {
+    // заменить стратегию: прежние цели и невыполненные задачи удаляются, выполненные (и их баллы) остаются;
+    // новые цели уходят на согласование, баллы за прошлое согласование не отнимаем
+    db.transaction(() => {
+      db.prepare("DELETE FROM tasks WHERE pilot_id = ? AND done_at IS NULL").run(p.id);
+      db.prepare("DELETE FROM goals WHERE pilot_id = ?").run(p.id);
+    })();
   }
   res.json(importStrategy(p.id, parsed));
 });
@@ -437,5 +457,17 @@ teamRouter.post("/pilots/:id/survey/reopen", (req, res) => {
   const p = pilotOr404(Number(req.params.id), res);
   if (!p) return;
   db.prepare("UPDATE pilots SET survey_sent_at = NULL WHERE id = ?").run(p.id);
+  res.json({ ok: true });
+});
+
+/** Команда ответила на предложение пилота: «учтено» + комментарий */
+teamRouter.post("/strategy-requests/:id/resolve", (req, res) => {
+  const r = db.prepare("SELECT id FROM strategy_requests WHERE id = ?").get(Number(req.params.id));
+  if (!r) {
+    res.status(404).json({ error: "Не найдено" });
+    return;
+  }
+  const answer = String(req.body?.answer ?? "").trim().slice(0, 3000);
+  db.prepare("UPDATE strategy_requests SET status = 'done', answer = ?, resolved_at = datetime('now') WHERE id = ?").run(answer, Number(req.params.id));
   res.json({ ok: true });
 });

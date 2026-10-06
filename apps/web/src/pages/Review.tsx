@@ -113,6 +113,7 @@ export default function Review({ data, reload }: PilotCtx) {
           Отметьте, что берёте в работу. Не актуальное уйдёт в архив, его можно вернуть позже.
           {!data.review.reviewed ? ` За согласование — +${data.review.points} ${pointsWord(data.review.points)}.` : ""}
         </p>
+        <Link to="/strategy?suggest=1" className="link small">Стратегия в целом не про вас? Предложите правку команде</Link>
       </section>
 
       {review.goals.map((g) => {

@@ -5,7 +5,7 @@ import { filesInfo, saveAnswers, upload, registerUploads } from "../answers.js";
 import { applyChanges } from "../strategy.js";
 import { channelView, deletePost, listChannels, listPosts, markManual, retryPost, savePost, waitingCount } from "../posting.js";
 import { applyDecisions, publicTask, type Decisions } from "../model.js";
-import { getAnswers, getPilot, listGoals, listTasks, pilotOverview, pilotReview } from "../pilot-data.js";
+import { getAnswers, getPilot, listRequests, listGoals, listTasks, pilotOverview, pilotReview } from "../pilot-data.js";
 import { vkAuthUrl } from "../vk-id.js";
 import { SURVEY, SURVEY_INTRO, SURVEY_POINTS, SURVEY_TITLE } from "../survey.js";
 
@@ -170,4 +170,29 @@ pilotRouter.post("/posts/:id/retry", (req, res) => {
 pilotRouter.post("/posts/:id/targets/:channelId/done", (req, res) => {
   const r = markManual(req.session!.pilotId!, Number(req.params.id), Number(req.params.channelId), req.body?.url);
   res.status("error" in r ? 400 : 200).json(r);
+});
+
+/* ——— предложения по стратегии: пилот пишет, команда правит стратегию и отвечает ——— */
+
+pilotRouter.get("/strategy-requests", (req, res) => {
+  res.json({ requests: listRequests(req.session!.pilotId!) });
+});
+
+pilotRouter.post("/strategy-requests", (req, res) => {
+  const pilotId = req.session!.pilotId!;
+  const text = String(req.body?.text ?? "").trim().slice(0, 3000);
+  if (text.length < 3) {
+    res.status(400).json({ error: "Напишите, что поменять" });
+    return;
+  }
+  const open = (db.prepare("SELECT COUNT(*) AS n FROM strategy_requests WHERE pilot_id = ? AND status = 'open'").get(pilotId) as { n: number }).n;
+  if (open >= 20) {
+    res.status(429).json({ error: "Уже 20 предложений ждут команду — дождитесь ответа" });
+    return;
+  }
+  const goal = req.body?.goalId
+    ? (db.prepare("SELECT id, title FROM goals WHERE id = ? AND pilot_id = ?").get(Number(req.body.goalId), pilotId) as { id: number; title: string } | undefined)
+    : undefined;
+  db.prepare("INSERT INTO strategy_requests (pilot_id, goal_id, goal_title, text) VALUES (?, ?, ?, ?)").run(pilotId, goal?.id ?? null, goal?.title ?? "", text);
+  res.json({ ok: true, requests: listRequests(pilotId) });
 });

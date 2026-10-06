@@ -223,6 +223,36 @@ CREATE TABLE IF NOT EXISTS post_targets (
 );
 `);
 
+/**
+ * Предложения пилота по стратегии: «эта цель не про меня», «срок нереальный», «добавьте…».
+ * Стратегию правит команда (вручную или новым импортом), пилот видит ответ.
+ */
+db.exec(`
+CREATE TABLE IF NOT EXISTS strategy_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pilot_id INTEGER NOT NULL REFERENCES pilots(id) ON DELETE CASCADE,
+  goal_id INTEGER REFERENCES goals(id) ON DELETE SET NULL,
+  goal_title TEXT NOT NULL DEFAULT '',   -- название цели на момент запроса (цель могут удалить при замене стратегии)
+  text TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'done')),
+  answer TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  resolved_at TEXT
+);
+`);
+
+export type StrategyRequest = {
+  id: number;
+  pilot_id: number;
+  goal_id: number | null;
+  goal_title: string;
+  text: string;
+  status: "open" | "done";
+  answer: string;
+  created_at: string;
+  resolved_at: string | null;
+};
+
 export type ChannelKind = "vk" | "max" | "tg" | "dzen" | "instagram";
 
 export type Channel = {

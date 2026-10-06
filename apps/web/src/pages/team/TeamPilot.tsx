@@ -9,6 +9,7 @@ import {
   type Overview,
   type Section,
   type StageItem,
+  type StrategyRequestItem,
   type TaskItem,
   type ToolItem,
 } from "../../api";
@@ -26,6 +27,7 @@ type Detail = Overview & {
   surveySections: Section[];
   answers: Answers;
   files: Record<string, FileInfo>;
+  requests: StrategyRequestItem[];
 };
 
 type Tab = "profile" | "strategy" | "tasks" | "posts" | "tools" | "survey";
@@ -193,9 +195,70 @@ const STAGE_TEMPLATE: Omit<StageItem, "id">[] = [
 
 const STATUS_LABEL: Record<ItemStatus, string> = { proposed: "на согласовании", accepted: "в работе", declined: "в архиве" };
 
+/** Предложения пилота по стратегии: поправить цели/задачи (или заменить стратегию импортом) и ответить */
+function RequestsPanel({ d, reload }: TabProps) {
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const s = useSaver();
+  const open = d.requests.filter((r) => r.status === "open");
+  const done = d.requests.filter((r) => r.status === "done");
+  if (!d.requests.length) return null;
+  return (
+    <section className={`card stack${open.length ? " card--accent" : ""}`}>
+      <h2 className="h2">Предложения пилота{open.length ? ` · ждут ответа: ${open.length}` : ""}</h2>
+      {open.length ? (
+        <p className="muted small">
+          Поправьте цели и задачи ниже или загрузите обновлённую стратегию (с галочкой «Заменить»), затем ответьте пилоту — он увидит ответ во вкладке «Стратегия».
+        </p>
+      ) : null}
+      {open.map((r) => (
+        <div key={r.id} className="sr__item">
+          <p className="muted small">{new Date(r.createdAt.replace(" ", "T") + "Z").toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}{r.goalTitle ? ` · Цель: ${r.goalTitle}` : " · Стратегия в целом"}</p>
+          <p className="sr__text">{r.text}</p>
+          <textarea
+            rows={2}
+            placeholder="Ответ пилоту, например: «Переделали стратегию под приложение для сторов — посмотрите на главной»"
+            value={answers[r.id] || ""}
+            onChange={(e) => setAnswers({ ...answers, [r.id]: e.target.value })}
+          />
+          <div className="row-gap">
+            <button
+              type="button"
+              className="btn btn--primary"
+              disabled={s.busy}
+              onClick={() =>
+                void s.run(async () => {
+                  await api(`/api/team/strategy-requests/${r.id}/resolve`, { method: "POST", json: { answer: answers[r.id] || "" } });
+                  await reload();
+                }, "Ответ отправлен")
+              }
+            >
+              Учтено — ответить
+            </button>
+          </div>
+        </div>
+      ))}
+      {s.note}
+      {done.length ? (
+        <details>
+          <summary className="muted small">Учтённые: {done.length}</summary>
+          <ul className="sr__list">
+            {done.map((r) => (
+              <li key={r.id} className="sr__item">
+                <p className="sr__text">{r.text}</p>
+                {r.answer ? <p className="sr__answer"><b>Ответ:</b> {r.answer}</p> : null}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </section>
+  );
+}
+
 function GoalsPanel({ d, reload }: TabProps) {
   const [json, setJson] = useState("");
   const [open, setOpen] = useState(false);
+  const [replace, setReplace] = useState(false);
   const s = useSaver();
   const act = (url: string, method = "POST") => void s.run(async () => { await api(url, { method }); await reload(); }, "Готово");
 
@@ -219,6 +282,17 @@ function GoalsPanel({ d, reload }: TabProps) {
             }}
           />
           <textarea rows={8} value={json} onChange={(e) => setJson(e.target.value)} placeholder='{"goals":[{"title":"…","tasks":[{"title":"…","dueDate":"2026-10-15","points":50}]}]}' />
+          {d.allGoals.length || d.allTasks.length ? (
+            <label className="field check check--top">
+              <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} />
+              <span>
+                <b>Заменить текущую стратегию</b>
+                <small className="muted block">
+                  Прежние цели и невыполненные задачи удалятся, выполненные задачи и их баллы останутся. Новую стратегию пилот согласует заново. Без галочки — новые цели добавятся к текущим.
+                </small>
+              </span>
+            </label>
+          ) : null}
           <div className="row-gap">
             <button
               type="button"
@@ -232,8 +306,10 @@ function GoalsPanel({ d, reload }: TabProps) {
                   } catch {
                     throw new Error("Это не JSON — проверьте, что скопировали файл целиком");
                   }
-                  const r = await api<{ goals: number; tasks: number }>(`/api/team/pilots/${d.pilot.id}/strategy`, { method: "POST", json: { strategy } });
+                  if (replace && !window.confirm("Заменить стратегию? Прежние цели и невыполненные задачи пилота удалятся.")) throw new Error("Замена отменена");
+                  const r = await api<{ goals: number; tasks: number }>(`/api/team/pilots/${d.pilot.id}/strategy`, { method: "POST", json: { strategy, replace } });
                   setJson("");
+                  setReplace(false);
                   setOpen(false);
                   await reload();
                   return r;
@@ -317,6 +393,7 @@ function StrategyTab({ d, reload }: TabProps) {
 
   return (
     <div className="stack">
+      <RequestsPanel d={d} reload={reload} />
       <GoalsPanel d={d} reload={reload} />
       <h2 className="h2">Этапы (таймлайн)</h2>
       {list.length === 0 ? (

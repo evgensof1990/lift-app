@@ -37,6 +37,9 @@ type State = {
   files: DFile[];
 };
 
+/** предложения пилота по стратегии — в демо только в памяти */
+const demoRequests: { id: number; goalTitle: string; text: string; status: "open" | "done"; answer: string; createdAt: string; resolvedAt: string | null }[] = [];
+
 const KEY = "lift.demo.v3";
 const day = (n: number) => {
   const d = new Date();
@@ -214,6 +217,17 @@ export async function demoApi(path: string, method: string, json: unknown, body:
   if (path === "/api/survey" && method === "GET") {
     return { title: SURVEY_TITLE, intro: SURVEY_INTRO, points: SURVEY_POINTS, sections: SURVEY, answers: state.answers[ME] || {}, files: filesFor(ME), sentAt: pilot(ME).survey_sent_at || null };
   }
+  if (path === "/api/strategy-requests") {
+    if (method === "POST") {
+      demoRequests.unshift({ id: Date.now(), goalTitle: "", text: String(b.text || ""), status: "open", answer: "", createdAt: now(), resolvedAt: null });
+    }
+    return { ok: true, requests: demoRequests };
+  }
+  if ((r = m(/^\/api\/team\/strategy-requests\/(\d+)\/resolve$/))) {
+    const q = demoRequests.find((x) => x.id === Number(r![1]));
+    if (q) Object.assign(q, { status: "done", answer: String(b.answer || ""), resolvedAt: now() });
+    return { ok: true };
+  }
   if (path === "/api/survey/send") {
     const p = pilot(ME);
     p.survey_sent_at ||= now();
@@ -296,7 +310,7 @@ export async function demoApi(path: string, method: string, json: unknown, body:
       })),
       allTasks: tasks.map((t) => publicTask(t, g)),
       profile: { phone: p.phone, consentAt: p.consent_at, inviteUrl: `https://lift.myrenthub.ru/invite/${p.invite}` },
-      surveySections: SURVEY, answers, files: filesFor(p.id), surveyProgress: surveyProgress(answers, p.survey_sent_at),
+      surveySections: SURVEY, answers, files: filesFor(p.id), surveyProgress: surveyProgress(answers, p.survey_sent_at), requests: demoRequests,
     };
   }
   if ((r = m(/^\/api\/team\/pilots\/(\d+)\/survey\/reopen$/))) {

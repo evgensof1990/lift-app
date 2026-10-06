@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api, GOALS, plural, TASKS } from "../api";
 import { IconCheck } from "../components/Icons";
+import StrategyRequests from "../components/StrategyRequests";
 import type { PilotCtx } from "../PilotShell";
 
 export default function Strategy({ data, reload }: PilotCtx) {
   const { pilot, stages, goals, archive, review } = data;
   const [busy, setBusy] = useState("");
+  const [search] = useSearchParams();
   const archived = archive.goals.length + archive.tasks.length;
 
   async function restore(kind: "goal" | "task", id: number) {
@@ -92,6 +94,8 @@ export default function Strategy({ data, reload }: PilotCtx) {
           </div>
         </section>
       ) : null}
+
+      {goals.length || review.pending || pilot.goal ? <StrategyRequests goals={goals} startOpen={search.get("suggest") === "1"} /> : null}
 
       {archived ? (
         <details className="archive">

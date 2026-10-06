@@ -217,3 +217,14 @@ export function pointsWord(n: number) {
   if (b >= 2 && b <= 4) return "балла";
   return "баллов";
 }
+
+/** Предложение пилота по стратегии */
+export type StrategyRequestItem = {
+  id: number;
+  goalTitle: string;
+  text: string;
+  status: "open" | "done";
+  answer: string;
+  createdAt: string;
+  resolvedAt: string | null;
+};

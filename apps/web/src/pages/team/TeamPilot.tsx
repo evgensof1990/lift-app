@@ -637,6 +637,57 @@ function surveyText(d: Detail) {
   return lines.join("\n");
 }
 
+/** Ответы, собранные вне приложения (Google Форма, переписка), — одним JSON */
+function SurveyImport({ d, reload }: { d: Detail; reload: () => Promise<void> }) {
+  const [json, setJson] = useState("");
+  const [sent, setSent] = useState(true);
+  const s = useSaver();
+  return (
+    <details className="card stack">
+      <summary className="strong">Загрузить ответы, собранные вне приложения (JSON)</summary>
+      <p className="muted small">
+        Для пилотов, которые заполняли Google Форму или отвечали в переписке: пилоту не придётся отвечать заново. Ответы на те же вопросы заменятся.
+      </p>
+      <input type="file" accept=".json,application/json" onChange={(e) => { const f = e.target.files?.[0]; if (f) void f.text().then(setJson); }} />
+      <textarea rows={5} value={json} onChange={(e) => setJson(e.target.value)} placeholder='{"answers":{"q1":"Название","q2":"Имя"}}' />
+      <label className="field check check--top">
+        <input type="checkbox" checked={sent} onChange={(e) => setSent(e.target.checked)} />
+        <span>
+          <b>Анкета уже у команды</b>
+          <small className="muted block">Ответы закрепятся, пилот получит баллы за анкету и сразу увидит «Команда составляет стратегию».</small>
+        </span>
+      </label>
+      <div className="row-gap">
+        <button
+          type="button"
+          className="btn btn--primary"
+          disabled={!json.trim() || s.busy}
+          onClick={() =>
+            void s.run(async () => {
+              let body: { answers?: unknown };
+              try {
+                body = JSON.parse(json);
+              } catch {
+                throw new Error("Это не JSON — проверьте, что скопировали файл целиком");
+              }
+              const r = await api<{ saved: number; skipped: string[] }>(`/api/team/pilots/${d.pilot.id}/survey/import`, {
+                method: "POST",
+                json: { answers: body.answers, sent },
+              });
+              setJson("");
+              await reload();
+              if (r.skipped.length) throw new Error(`Загружено ${r.saved}, не подошли: ${r.skipped.join(", ")} — проверьте варианты ответа`);
+            }, "Ответы загружены")
+          }
+        >
+          Загрузить
+        </button>
+        {s.note}
+      </div>
+    </details>
+  );
+}
+
 function SurveyTab({ d, reload }: { d: Detail; reload: () => Promise<void> }) {
   const fmt = fmtAnswer;
   const [copied, setCopied] = useState<"" | "ok" | "manual">("");
@@ -675,6 +726,7 @@ function SurveyTab({ d, reload }: { d: Detail; reload: () => Promise<void> }) {
         ) : (
           <span className="muted small">Пилот ещё не отправил анкету — ответы могут меняться.</span>
         )}
+        <SurveyImport d={d} reload={reload} />
         {copied === "ok" ? <p className="ok">Скопировано — вставьте в чат, где составляем стратегию.</p> : null}
         {copied === "manual" ? (
           <>

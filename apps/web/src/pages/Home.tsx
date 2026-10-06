@@ -98,7 +98,7 @@ export default function Home({ data }: PilotCtx) {
           ))}
         </ul>
       ) : (
-        <p className="muted">Открытых задач нет. Команда скоро добавит новые.</p>
+        <p className="muted">{data.review.pending ? "Задачи появятся здесь, когда вы согласуете стратегию." : "Открытых задач нет. Команда скоро добавит новые."}</p>
       )}
 
       {survey.complete ? (

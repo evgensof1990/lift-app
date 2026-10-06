@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { dueLabel, GOALS, isSoon, plural, pointsWord, TASKS } from "../api";
 import FloorCard from "../components/FloorCard";
+import InstallHint from "../components/InstallHint";
 import { IconFlag, IconForm, IconMegaphone } from "../components/Icons";
 import { Logo } from "../components/Logo";
 import type { PilotCtx } from "../PilotShell";
@@ -45,6 +46,8 @@ export default function Home({ data }: PilotCtx) {
       ) : null}
 
       <FloorCard game={game} />
+
+      <InstallHint />
 
       {!survey.complete ? (
         <Link to="/survey" className="card card--link">

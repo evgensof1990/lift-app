@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { KEY_INVITE } from "../components/InstallHint";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, setSession } from "../api";
 import { LogoMark } from "../components/Logo";
@@ -27,6 +28,11 @@ export default function Invite() {
         json: { consent },
       });
       setSession(r.token, "pilot");
+      try {
+        localStorage.setItem(KEY_INVITE, token);
+      } catch {
+        /* без запоминания */
+      }
       nav("/", { replace: true });
     } catch (e) {
       setErr((e as Error).message);

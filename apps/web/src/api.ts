@@ -1,5 +1,8 @@
-const TOKEN_KEY = "lift.token";
-const ROLE_KEY = "lift.role";
+/**
+ * Вход команды и вход пилота хранятся отдельно: владелец может быть и командой, и пилотом
+ * в одном браузере — один вход не должен выбивать другой.
+ */
+const KEY: Record<Role, string> = { team: "lift.token.team", pilot: "lift.token.pilot" };
 
 export type Role = "pilot" | "team";
 
@@ -11,23 +14,32 @@ function storage() {
   }
 }
 
-export function getToken() {
-  return storage()?.getItem(TOKEN_KEY) || "";
+// прежний формат: один токен + роль — переносим один раз
+(() => {
+  const st = storage();
+  const old = st?.getItem("lift.token");
+  const role = st?.getItem("lift.role");
+  if (st && old && (role === "pilot" || role === "team")) {
+    if (!st.getItem(KEY[role])) st.setItem(KEY[role], old);
+    st.removeItem("lift.token");
+    st.removeItem("lift.role");
+  }
+})();
+
+export function getToken(role: Role) {
+  return storage()?.getItem(KEY[role]) || "";
 }
 
-export function getRole(): Role | "" {
-  const r = storage()?.getItem(ROLE_KEY);
-  return r === "pilot" || r === "team" ? r : "";
+export function hasSession(role: Role) {
+  return !!getToken(role);
 }
 
 export function setSession(token: string, role: Role) {
-  storage()?.setItem(TOKEN_KEY, token);
-  storage()?.setItem(ROLE_KEY, role);
+  storage()?.setItem(KEY[role], token);
 }
 
-export function clearSession() {
-  storage()?.removeItem(TOKEN_KEY);
-  storage()?.removeItem(ROLE_KEY);
+export function clearSession(role: Role) {
+  storage()?.removeItem(KEY[role]);
 }
 
 export class ApiError extends Error {
@@ -42,7 +54,8 @@ export class ApiError extends Error {
 /** Демо-сборка (VITE_DEMO=1): без сервера, данные-примеры в телефоне */
 export const DEMO = import.meta.env.VITE_DEMO === "1";
 
-export async function api<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
+/** role — чей вход использовать; по умолчанию /api/team/* — команда, остальное — пилот */
+export async function api<T>(path: string, init: RequestInit & { json?: unknown; role?: Role } = {}): Promise<T> {
   if (DEMO) {
     const { demoApi } = await import("./demo");
     try {
@@ -52,7 +65,7 @@ export async function api<T>(path: string, init: RequestInit & { json?: unknown 
     }
   }
   const headers = new Headers(init.headers);
-  const token = getToken();
+  const token = getToken(init.role || (path.startsWith("/api/team") ? "team" : "pilot"));
   if (token) headers.set("Authorization", `Bearer ${token}`);
   let body = init.body;
   if (init.json !== undefined) {

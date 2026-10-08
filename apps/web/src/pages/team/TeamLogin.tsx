@@ -29,9 +29,11 @@ export default function TeamLogin() {
       <LogoMark size={64} />
       <form className="welcome__form" onSubmit={(e) => void submit(e)}>
         <h1 className="h1 center">Лифт · команда</h1>
+        {/* логин для менеджера паролей: браузер запомнит пароль именно «Лифта», а не чужие поля */}
+        <input type="text" name="username" autoComplete="username" value="Команда «Лифта»" readOnly hidden />
         <label className="field">
           <span>Пароль</span>
-          <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <input type="password" name="password" autoComplete="current-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} />
         </label>
         {err ? <p className="error">{err}</p> : null}
         <button className="btn btn--primary" type="submit" disabled={!password || busy}>Войти</button>

@@ -5,8 +5,8 @@ import { LogoMark } from "../../components/Logo";
 export default function TeamLayout({ children }: { children: React.ReactNode }) {
   const nav = useNavigate();
   async function logout() {
-    await api("/api/auth/logout", { method: "POST" }).catch(() => undefined);
-    clearSession();
+    await api("/api/auth/logout", { method: "POST", role: "team" }).catch(() => undefined);
+    clearSession("team");
     nav("/team/login", { replace: true });
   }
   return (

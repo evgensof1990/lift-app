@@ -23,7 +23,7 @@ export default function PilotShell() {
       setErr("");
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        clearSession();
+        clearSession("pilot");
         nav("/welcome", { replace: true });
         return;
       }

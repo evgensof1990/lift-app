@@ -12,8 +12,8 @@ const STATUS = {
 export default function Tools({ data }: PilotCtx) {
   const nav = useNavigate();
   async function logout() {
-    await api("/api/auth/logout", { method: "POST" }).catch(() => undefined);
-    clearSession();
+    await api("/api/auth/logout", { method: "POST", role: "pilot" }).catch(() => undefined);
+    clearSession("pilot");
     nav("/welcome", { replace: true });
   }
   return (

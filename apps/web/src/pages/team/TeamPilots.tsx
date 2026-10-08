@@ -36,7 +36,7 @@ export default function TeamPilots() {
       setRows((await api<{ pilots: Row[] }>("/api/team/pilots")).pilots);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        clearSession();
+        clearSession("team");
         nav("/team/login", { replace: true });
         return;
       }

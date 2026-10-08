@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-import { getRole } from "./api";
+import { hasSession } from "./api";
 import PilotShell from "./PilotShell";
 import Invite from "./pages/Invite";
 import Survey from "./pages/Survey";
@@ -9,11 +9,12 @@ import TeamPilot from "./pages/team/TeamPilot";
 import Welcome from "./pages/Welcome";
 
 function PilotOnly({ children }: { children: React.ReactNode }) {
-  return getRole() === "pilot" ? <>{children}</> : <Navigate to="/welcome" replace />;
+  if (hasSession("pilot")) return <>{children}</>;
+  return <Navigate to={hasSession("team") ? "/team" : "/welcome"} replace />;
 }
 
 function TeamOnly({ children }: { children: React.ReactNode }) {
-  return getRole() === "team" ? <>{children}</> : <Navigate to="/team/login" replace />;
+  return hasSession("team") ? <>{children}</> : <Navigate to="/team/login" replace />;
 }
 
 export default function App() {

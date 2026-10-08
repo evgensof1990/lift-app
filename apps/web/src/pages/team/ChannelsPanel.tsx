@@ -169,7 +169,7 @@ export default function ChannelsPanel({ pilotId, onChange }: { pilotId: number; 
           ) : null}
           {NO_TOKEN.includes(draft.kind) ? null : (
             <label className="field"><span>{HELP[draft.kind].token}{editId ? " (пусто — оставить прежний)" : ""}</span>
-              <input type="password" autoComplete="off" value={draft.token} onChange={(e) => setDraft({ ...draft, token: e.target.value })} /></label>
+              <input type="text" className="secret" name="channel-key" autoComplete="off" spellCheck={false} data-lpignore="true" value={draft.token} onChange={(e) => setDraft({ ...draft, token: e.target.value })} /></label>
           )}
           {draft.kind === "max" ? (
             <div className="stack">

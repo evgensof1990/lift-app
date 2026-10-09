@@ -18,7 +18,7 @@ export type Question = {
 
 export type Section = { id: string; title: string; questions: Question[] };
 
-export const SURVEY_TITLE = "Анкета для сайта";
+export const SURVEY_TITLE = "Анкета о бизнесе";
 export const SURVEY_INTRO =
   "Ответы помогут собрать ваш сайт без лишних созвонов. Пишите своими словами, мы всё отредактируем. Если на вопрос нет ответа — пропустите его.";
 /** Баллы за полностью заполненные обязательные вопросы */

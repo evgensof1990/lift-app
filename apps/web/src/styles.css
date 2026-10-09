@@ -419,3 +419,8 @@ input.secret { -webkit-text-security: disc; }
 .start__list li:not(.now):not(.done) .start__body strong { color: var(--text-2); }
 .start__body .btn { margin-top: 8px; }
 .survey__nav--col { flex-direction: column; }
+/* Видео в постах */
+.thumb-video { position: relative; display: block; }
+.thumb-video video { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; display: block; background: #000; }
+.thumb-video__play { position: absolute; inset: 0; display: grid; place-items: center; font-size: 22px; color: #fff; text-shadow: 0 2px 8px rgba(0, 0, 0, .7); pointer-events: none; }
+.upload-progress { gap: 6px; }

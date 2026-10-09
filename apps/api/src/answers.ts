@@ -5,9 +5,12 @@ import { randomToken } from "./auth.js";
 import { db } from "./db.js";
 import { QUESTION_BY_ID, normalizeAnswer } from "./survey.js";
 
-const ALLOWED = /^(image\/(jpeg|png|webp|gif|heic|heif|svg\+xml)|application\/pdf|application\/vnd\.(ms-excel|openxmlformats-officedocument\.(spreadsheetml\.sheet|wordprocessingml\.document))|application\/msword|text\/csv)$/;
+const ALLOWED = /^(image\/(jpeg|png|webp|gif|heic|heif|svg\+xml)|video\/(mp4|quicktime|webm|x-m4v|3gpp)|application\/pdf|application\/vnd\.(ms-excel|openxmlformats-officedocument\.(spreadsheetml\.sheet|wordprocessingml\.document))|application\/msword|text\/csv)$/;
 
-/** Файлы анкеты: случайное имя на диске = адрес /files/<id> (угадать нельзя) */
+/** Телефоны иногда не говорят тип видео (application/octet-stream) — узнаём по расширению */
+const VIDEO_EXT: Record<string, string> = { ".mov": "video/quicktime", ".mp4": "video/mp4", ".m4v": "video/x-m4v", ".webm": "video/webm", ".3gp": "video/3gpp" };
+
+/** Файлы анкеты и постов: случайное имя на диске = адрес /files/<id> (угадать нельзя). Видео — до 300 МБ */
 export const upload = multer({
   storage: multer.diskStorage({
     destination: config.uploadsDir,
@@ -16,8 +19,12 @@ export const upload = multer({
       cb(null, `${randomToken(18)}${ext}`);
     },
   }),
-  limits: { fileSize: 25 * 1024 * 1024, files: 20 },
-  fileFilter: (_req, file, cb) => cb(null, ALLOWED.test(file.mimetype)),
+  limits: { fileSize: 300 * 1024 * 1024, files: 20 },
+  fileFilter: (_req, file, cb) => {
+    const byExt = VIDEO_EXT[path.extname(file.originalname).toLowerCase()];
+    if (byExt && !file.mimetype.startsWith("video/")) file.mimetype = byExt;
+    cb(null, ALLOWED.test(file.mimetype));
+  },
 });
 
 export type FileInfo = { id: string; name: string; mime: string; size: number; url: string };

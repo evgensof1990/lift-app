@@ -78,6 +78,16 @@ if (fs.existsSync(config.webDist)) {
   });
 }
 
+/** Ошибки загрузки файлов и прочие — понятным текстом, а не страницей с ошибкой */
+app.use((err: Error & { code?: string }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (err.code === "LIMIT_FILE_SIZE") {
+    res.status(413).json({ error: "Файл больше 300 МБ — сожмите видео или загрузите покороче" });
+    return;
+  }
+  console.error(err);
+  res.status(500).json({ error: "Ошибка сервера, попробуйте ещё раз" });
+});
+
 app.listen(config.port, "127.0.0.1", () => {
   console.log(`Лифт: http://127.0.0.1:${config.port}`);
   if (!config.teamPassword) console.warn("⚠ TEAM_PASSWORD не задан — вход команды закрыт");

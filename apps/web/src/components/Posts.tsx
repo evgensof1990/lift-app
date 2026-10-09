@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type FileInfo } from "../api";
+import { api, isVideoFile, uploadFiles, type FileInfo } from "../api";
 import { IconPaperclip } from "./Icons";
 import { shareToInstagram } from "../share";
 
@@ -128,7 +128,7 @@ export default function PostsBoard({ urls, emptyChannelsHint }: { urls: PostsApi
           <PostCard key={p.id} p={p} act={act} urls={urls} />
         ))}
       </ul>
-      {!posts.length ? <p className="muted">Постов пока нет. Напишите первый — фото, текст и время публикации.</p> : null}
+      {!posts.length ? <p className="muted">Постов пока нет. Напишите первый — текст, фото или видео и время публикации.</p> : null}
     </div>
   );
 }
@@ -144,9 +144,7 @@ function PostCard({ p, onEdit, act, urls }: { p: PostView; onEdit?: () => void; 
       </div>
       {p.photos.length ? (
         <div className="post__photos">
-          {p.photos.slice(0, 4).map((f) => (
-            <img key={f.id} src={f.url} alt="" />
-          ))}
+          {p.photos.slice(0, 4).map((f) => <Thumb key={f.id} f={f} />)}
           {p.photos.length > 4 ? <span className="post__more">+{p.photos.length - 4}</span> : null}
         </div>
       ) : null}
@@ -216,21 +214,25 @@ function PostEditor({
   const [at, setAt] = useState(toLocalInput(post?.publishAt || null));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [progress, setProgress] = useState<number | null>(null);
 
   async function upload(list: FileList | null) {
     if (!list?.length) return;
     const form = new FormData();
     Array.from(list).slice(0, 10 - photos.length).forEach((f) => form.append("files", f));
     setBusy(true);
+    setErr("");
+    setProgress(0);
     try {
-      const r = await api<{ files: FileInfo[] }>(urls.files, { method: "POST", body: form });
-      const images = r.files.filter((f) => /^image\/(jpeg|png|webp|gif)$/.test(f.mime));
-      if (images.length < r.files.length || !r.files.length) setErr("Подходят фото JPG, PNG или WebP");
-      setPhotos([...photos, ...images].slice(0, 10));
+      const r = await uploadFiles<{ files: FileInfo[] }>(urls.files, form, setProgress);
+      const media = r.files.filter((f) => MEDIA.test(f.mime));
+      if (media.length < list.length) setErr("Подходят фото JPG, PNG, WebP и видео MP4, MOV, WebM");
+      setPhotos([...photos, ...media].slice(0, 10));
     } catch (e) {
       setErr((e as Error).message);
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
 
@@ -264,21 +266,26 @@ function PostEditor({
       </label>
 
       <div className="field">
-        <span>Фото (до 10)</span>
+        <span>Фото и видео (до 10)</span>
         {photos.length ? (
           <div className="post__photos post__photos--edit">
             {photos.map((f) => (
               <span key={f.id} className="post__photo">
-                <img src={f.url} alt="" />
-                <button type="button" aria-label="Убрать фото" onClick={() => setPhotos(photos.filter((x) => x.id !== f.id))}>×</button>
+                <Thumb f={f} />
+                <button type="button" aria-label="Убрать" onClick={() => setPhotos(photos.filter((x) => x.id !== f.id))}>×</button>
               </span>
             ))}
           </div>
         ) : null}
-        {photos.length < 10 ? (
+        {progress !== null ? (
+          <div className="stack upload-progress">
+            <div className="bar"><i style={{ width: `${progress}%` }} /></div>
+            <small className="muted">{progress < 100 ? `Загружаем… ${progress}%` : "Обрабатываем…"} Видео может загружаться пару минут — не закрывайте экран.</small>
+          </div>
+        ) : photos.length < 10 ? (
           <label className="btn btn--outline file-btn">
-            <IconPaperclip size={18} />Добавить фото
-            <input type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={(e) => { void upload(e.target.files); e.target.value = ""; }} />
+            <IconPaperclip size={18} />Добавить фото или видео
+            <input type="file" multiple accept={ACCEPT} onChange={(e) => { void upload(e.target.files); e.target.value = ""; }} />
           </label>
         ) : null}
       </div>
@@ -333,10 +340,10 @@ function ManualPublish({ p, t, act, urls }: { p: PostView; t: PostTargetView; ac
       <p className="small">
         <strong>{t.title}:</strong>{" "}
         {step === "start"
-          ? "нажмите кнопку — подпись скопируется, фото откроются в «Поделиться». Выберите Instagram и вставьте подпись."
+          ? "нажмите кнопку — подпись скопируется, фото и видео откроются в «Поделиться». Выберите Instagram и вставьте подпись."
           : step === "shared"
             ? "Опубликовали? Отметьте — пост перейдёт в «Опубликовано»."
-            : "Подпись скопирована. Сохраните фото (нажмите и удерживайте) и опубликуйте их в Instagram."}
+            : "Подпись скопирована. Сохраните фото и видео (нажмите и удерживайте) и опубликуйте их в Instagram."}
       </p>
       {err ? <p className="error small">{err}</p> : null}
       <div className="row-gap">
@@ -359,5 +366,19 @@ function ManualPublish({ p, t, act, urls }: { p: PostView; t: PostTargetView; ac
         </button>
       </div>
     </div>
+  );
+}
+
+const MEDIA = /^(image\/(jpeg|png|webp|gif)|video\/(mp4|quicktime|webm|x-m4v|3gpp))$/;
+const ACCEPT = "image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,video/*,.mov,.mp4,.m4v";
+
+/** Миниатюра вложения: фото или первый кадр видео со значком ▶ */
+function Thumb({ f }: { f: FileInfo }) {
+  if (!isVideoFile(f)) return <img src={f.url} alt="" />;
+  return (
+    <span className="thumb-video">
+      <video src={`${f.url}#t=0.1`} muted playsInline preload="metadata" />
+      <span className="thumb-video__play" aria-hidden>▶</span>
+    </span>
   );
 }

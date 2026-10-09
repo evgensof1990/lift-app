@@ -78,6 +78,35 @@ export async function api<T>(path: string, init: RequestInit & { json?: unknown;
   return data as T;
 }
 
+/** Загрузка файлов с процентами (видео бывают большие); в демо — обычный api() */
+export function uploadFiles<T>(path: string, form: FormData, onProgress: (pct: number) => void): Promise<T> {
+  if (DEMO) return api<T>(path, { method: "POST", body: form });
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", path);
+    const token = getToken(path.startsWith("/api/team") ? "team" : "pilot");
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      let data: { error?: string } = {};
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        /* nginx отвечает страницей, а не JSON */
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data as T);
+      else if (xhr.status === 413) reject(new ApiError("Файл слишком большой — сожмите видео или загрузите покороче", 413));
+      else reject(new ApiError(data.error || "Не удалось загрузить файл, попробуйте ещё раз", xhr.status));
+    };
+    xhr.onerror = () => reject(new ApiError("Нет связи — проверьте интернет и попробуйте ещё раз", 0));
+    xhr.send(form);
+  });
+}
+
+export const isVideoFile = (f: { mime: string }) => f.mime.startsWith("video/");
+
 export type Game = {
   points: number;
   floor: number;

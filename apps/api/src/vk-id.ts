@@ -10,7 +10,7 @@ import { db, type Channel } from "./db.js";
 import { vkResolveGroup } from "./publishers.js";
 
 const VK_ID = (process.env.VK_ID_BASE || "https://id.vk.com").replace(/\/$/, "");
-const SCOPE = "wall photos groups";
+const SCOPE = "wall photos video groups";
 const STATE_TTL = 15 * 60 * 1000;
 
 type Pending = { by: "team" | "pilot"; pilotId: number; channelId?: number; title: string; groupId: string; verifier: string; until: number };

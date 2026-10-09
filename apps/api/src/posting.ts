@@ -167,7 +167,8 @@ export type PostInput = {
   mode?: unknown;
 };
 
-const IMAGE = /^image\/(jpeg|png|webp|gif)$/;
+/** Фото и видео поста */
+const MEDIA = /^(image\/(jpeg|png|webp|gif)|video\/(mp4|quicktime|webm|x-m4v|3gpp))$/;
 
 export function savePost(pilotId: number, b: PostInput, createdBy: "pilot" | "team", id?: number) {
   const prev = id ? (db.prepare("SELECT * FROM posts WHERE id = ? AND pilot_id = ?").get(id, pilotId) as Post | undefined) : undefined;
@@ -176,8 +177,8 @@ export function savePost(pilotId: number, b: PostInput, createdBy: "pilot" | "te
 
   const text = String(b.text ?? "").trim().slice(0, 4000);
   const photoIds = Array.isArray(b.photos) ? b.photos.filter((x): x is string => typeof x === "string").slice(0, 10) : [];
-  const photos = photoRows(pilotId, photoIds).filter((f) => IMAGE.test(f.mime));
-  if (!text && !photos.length) return { error: "Добавьте текст или фото" };
+  const photos = photoRows(pilotId, photoIds).filter((f) => MEDIA.test(f.mime));
+  if (!text && !photos.length) return { error: "Добавьте текст, фото или видео" };
 
   const mode = b.mode === "now" || b.mode === "schedule" ? b.mode : "draft";
   const enabled = listChannels(pilotId).filter((c) => c.enabled);

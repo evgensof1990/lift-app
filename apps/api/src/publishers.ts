@@ -1,12 +1,19 @@
 /**
  * Публикация поста в соцсети. Каждый канал: проверить подключение (check) и опубликовать (publish).
- * Фото берутся из загруженных файлов (data/uploads). Сетевые ошибки бросаются как Error с понятным текстом.
+ * Фото и видео берутся из загруженных файлов (data/uploads). Сетевые ошибки бросаются как Error с понятным текстом.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
 
+/** photos — все вложения поста: фото и видео (по mime) */
 export type PostPayload = { text: string; photos: { path: string; name: string; mime: string }[] };
+type Media = PostPayload["photos"][number];
+
+const isVideo = (m: Media) => m.mime.startsWith("video/");
+/** Файл с диска для отправки: читается по мере отправки, а не целиком в память (видео бывают большие) */
+const fileBlob = (m: Media) => fs.openAsBlob(m.path, { type: m.mime });
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export type PublishResult = { url: string };
 
 export type VkConfig = { groupId: string; token: string };
@@ -46,10 +53,10 @@ export async function vkResolveGroup(groupId: string, token: string) {
   return { id: String(g.id), name: g.name };
 }
 
-async function vkUploadPhoto(groupId: string, token: string, photo: PostPayload["photos"][number]) {
+async function vkUploadPhoto(groupId: string, token: string, photo: Media) {
   const server = (await vk("photos.getWallUploadServer", { group_id: groupId }, token)) as { upload_url: string };
   const form = new FormData();
-  form.append("photo", new Blob([fs.readFileSync(photo.path)], { type: photo.mime }), photo.name);
+  form.append("photo", await fileBlob(photo), photo.name);
   const up = await readJson(await fetch(server.upload_url, { method: "POST", body: form }), "ВК загрузка фото");
   const saved = (await vk(
     "photos.saveWallPhoto",
@@ -57,6 +64,26 @@ async function vkUploadPhoto(groupId: string, token: string, photo: PostPayload[
     token,
   )) as { id: number; owner_id: number }[];
   return `photo${saved[0].owner_id}_${saved[0].id}`;
+}
+
+/** Видео — в видеозаписи сообщества, к посту прикрепляется ссылкой video-123_456 */
+async function vkUploadVideo(groupId: string, token: string, video: Media, title: string) {
+  let save: { upload_url: string; video_id?: number; owner_id?: number };
+  try {
+    save = (await vk("video.save", { group_id: groupId, name: title || "Видео", wallpost: "0" }, token)) as typeof save;
+  } catch (e) {
+    if (/код (15|27)\)/.test((e as Error).message)) {
+      throw new Error("ВК не дал доступ к видео — нажмите «Подключить заново» в карточке ВКонтакте и разрешите доступ к видеозаписям");
+    }
+    throw e;
+  }
+  const form = new FormData();
+  form.append("video_file", await fileBlob(video), video.name);
+  const up = await readJson(await fetch(save.upload_url, { method: "POST", body: form }), "ВК загрузка видео");
+  const owner = (up.owner_id as number | undefined) ?? save.owner_id ?? -Number(groupId);
+  const id = (up.video_id as number | undefined) ?? save.video_id;
+  if (!id) throw new Error("ВК не вернул номер видео");
+  return `video${owner}_${id}`;
 }
 
 export const vkPublisher = {
@@ -67,7 +94,8 @@ export const vkPublisher = {
   async publish(c: VkConfig, p: PostPayload): Promise<PublishResult> {
     const { id } = await vkResolveGroup(c.groupId, c.token);
     const attachments: string[] = [];
-    for (const ph of p.photos.slice(0, 10)) attachments.push(await vkUploadPhoto(id, c.token, ph));
+    const title = p.text.split("\n")[0].slice(0, 100);
+    for (const m of p.photos.slice(0, 10)) attachments.push(isVideo(m) ? await vkUploadVideo(id, c.token, m, title) : await vkUploadPhoto(id, c.token, m));
     const res = (await vk(
       "wall.post",
       { owner_id: `-${id}`, from_group: "1", message: p.text, attachments: attachments.join(",") },
@@ -88,12 +116,19 @@ async function maxFetch(c: MaxConfig, method: string, apiPath: string, body?: un
   return readJson(res, `MAX ${apiPath.split("?")[0]}`);
 }
 
-async function maxUploadPhoto(c: MaxConfig, photo: PostPayload["photos"][number]) {
-  const meta = (await maxFetch(c, "POST", "/uploads?type=image")) as { url: string };
+async function maxUpload(c: MaxConfig, m: Media) {
+  const type = isVideo(m) ? "video" : "image";
+  const meta = (await maxFetch(c, "POST", `/uploads?type=${type}`)) as { url: string; token?: string };
   const form = new FormData();
-  form.append("data", new Blob([fs.readFileSync(photo.path)], { type: photo.mime }), photo.name);
-  const payload = await readJson(await fetch(meta.url, { method: "POST", body: form }), "MAX загрузка фото");
-  return { type: "image", payload };
+  form.append("data", await fileBlob(m), m.name);
+  const res = await fetch(meta.url, { method: "POST", body: form });
+  // у видео ключ выдаётся сразу в /uploads, ответ сервера загрузки не нужен
+  if (type === "video" && meta.token) {
+    if (!res.ok) throw new Error(`MAX загрузка видео: ${res.status} ${(await res.text()).slice(0, 200)}`);
+    return { type, payload: { token: meta.token } };
+  }
+  const payload = await readJson(res, `MAX загрузка ${type === "video" ? "видео" : "фото"}`);
+  return { type, payload };
 }
 
 export const maxPublisher = {
@@ -121,14 +156,22 @@ export const maxPublisher = {
   },
   async publish(c: MaxConfig, p: PostPayload): Promise<PublishResult> {
     const attachments = [];
-    for (const ph of p.photos.slice(0, 10)) attachments.push(await maxUploadPhoto(c, ph));
-    if (attachments.length) await new Promise((r) => setTimeout(r, 1000)); // MAX обрабатывает фото не мгновенно
+    for (const m of p.photos.slice(0, 10)) attachments.push(await maxUpload(c, m));
+    if (attachments.length) await sleep(1000); // MAX обрабатывает файлы не мгновенно
     const body: Record<string, unknown> = { text: p.text.slice(0, 4000) };
     if (attachments.length) body.attachments = attachments;
-    const res = (await maxFetch(c, "POST", `/messages?chat_id=${encodeURIComponent(c.chatId)}`, body)) as {
-      message?: { url?: string };
-    };
-    return { url: res.message?.url || "" };
+    // видео MAX обрабатывает дольше — пока «attachment.not.ready», ждём и пробуем снова (до ~2 минут)
+    for (let i = 0; ; i++) {
+      try {
+        const res = (await maxFetch(c, "POST", `/messages?chat_id=${encodeURIComponent(c.chatId)}`, body)) as {
+          message?: { url?: string };
+        };
+        return { url: res.message?.url || "" };
+      } catch (e) {
+        if (i >= 24 || !/not\.ready|not ready|process/i.test((e as Error).message)) throw e;
+        await sleep(5000);
+      }
+    }
   },
 };
 
@@ -143,6 +186,8 @@ export type TgConfig = { botToken: string; chatId: string };
 /** Telegram в России работает с перебоями — адрес API можно заменить на свой прокси (TELEGRAM_API_BASE) */
 const TG_API = (process.env.TELEGRAM_API_BASE || "https://api.telegram.org").replace(/\/$/, "");
 const TG_CAPTION = 1024;
+/** Бот Telegram может отправить файл до 50 МБ */
+const TG_MAX_FILE = 50 * 1024 * 1024;
 
 async function tg(c: TgConfig, method: string, body: FormData | Record<string, unknown>) {
   const isForm = body instanceof FormData;
@@ -176,6 +221,8 @@ export const tgPublisher = {
     const chatId = tgChat(c.chatId);
     const chat = (await tg(c, "getChat", { chat_id: chatId })) as { username?: string };
     const photos = p.photos.slice(0, 10);
+    const big = photos.find((m) => fs.statSync(m.path).size > TG_MAX_FILE);
+    if (big) throw new Error(`Telegram: «${big.name}» больше 50 МБ — бот не может отправить такой файл. Сожмите видео (например, снимите в 1080p) и опубликуйте снова`);
     // подпись к фото — до 1024 знаков; длинный текст уходит отдельным сообщением после фото
     const captionFits = p.text.length <= TG_CAPTION;
     let firstId = 0;
@@ -183,16 +230,25 @@ export const tgPublisher = {
       const form = new FormData();
       form.append("chat_id", chatId);
       if (captionFits && p.text) form.append("caption", p.text);
-      form.append("photo", new Blob([fs.readFileSync(photos[0].path)], { type: photos[0].mime }), photos[0].name);
-      firstId = ((await tg(c, "sendPhoto", form)) as { message_id: number }).message_id;
+      const video = isVideo(photos[0]);
+      if (video) form.append("supports_streaming", "true");
+      form.append(video ? "video" : "photo", await fileBlob(photos[0]), photos[0].name);
+      firstId = ((await tg(c, video ? "sendVideo" : "sendPhoto", form)) as { message_id: number }).message_id;
     } else if (photos.length > 1) {
       const form = new FormData();
       form.append("chat_id", chatId);
       form.append(
         "media",
-        JSON.stringify(photos.map((_, i) => ({ type: "photo", media: `attach://p${i}`, ...(i === 0 && captionFits && p.text ? { caption: p.text } : {}) }))),
+        JSON.stringify(
+          photos.map((m, i) => ({
+            type: isVideo(m) ? "video" : "photo",
+            media: `attach://p${i}`,
+            ...(isVideo(m) ? { supports_streaming: true } : {}),
+            ...(i === 0 && captionFits && p.text ? { caption: p.text } : {}),
+          })),
+        ),
       );
-      photos.forEach((ph, i) => form.append(`p${i}`, new Blob([fs.readFileSync(ph.path)], { type: ph.mime }), ph.name));
+      for (const [i, m] of photos.entries()) form.append(`p${i}`, await fileBlob(m), m.name);
       firstId = ((await tg(c, "sendMediaGroup", form)) as { message_id: number }[])[0].message_id;
     }
     if (p.text && (!photos.length || !captionFits)) {

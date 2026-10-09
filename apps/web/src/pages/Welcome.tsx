@@ -24,7 +24,7 @@ export default function Welcome() {
     <div className="screen screen--center welcome">
       <LogoMark size={84} />
       <h1 className="display">Лифт</h1>
-      <p className="lead">Ваш бизнес поднимается на новый этаж</p>
+      <p className="lead">Забираем рутину — вы занимаетесь продажами и своим делом</p>
       {DEMO ? (
         <div className="welcome__form">
           <p className="muted center">Демо-версия: данные — примеры, хранятся только в этом телефоне.</p>

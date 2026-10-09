@@ -160,6 +160,9 @@ export type Overview = {
   };
   game: Game;
   survey: SurveyProgress;
+  /** рутина, которую команда забирает на себя */
+  pains: PainItem[];
+  painSummary: PainSummary;
   tasks: TaskItem[];
   goals: GoalItem[];
   /** посты, которые ждут ручной публикации (Instagram); есть только в ответе /api/me */
@@ -241,3 +244,44 @@ export type StrategyRequestItem = {
   createdAt: string;
   resolvedAt: string | null;
 };
+
+export type PainStatus = "new" | "study" | "building" | "solved" | "later";
+
+/** Рутина пилота: что отнимает время и что с этим делает команда */
+export type PainItem = {
+  id: number;
+  title: string;
+  details: string;
+  freq: string;
+  duration: string;
+  area: string;
+  status: PainStatus;
+  /** что «Лифт» делает (или будет делать) вместо пилота — видит пилот */
+  solution: string;
+  /** часов в неделю уходит на рутину */
+  hours: number;
+  /** часов в неделю освободили (только у решённых) */
+  savedHours: number;
+  createdBy: string;
+  createdAt: string;
+  solvedAt: string | null;
+};
+
+export type PainSummary = {
+  total: number;
+  solved: number;
+  inWork: number;
+  savedHours: number;
+  openHours: number;
+  points: number;
+  pointsEach: number;
+  pointsLeft: boolean;
+};
+
+/** Для команды: плюс внутренняя заметка и ручная оценка */
+export type TeamPainItem = PainItem & { teamNote: string; savedEstimate: number | null; updatedAt: string };
+
+/** «2,5 ч» */
+export function hoursLabel(h: number) {
+  return `${String(Math.round(h * 10) / 10).replace(".", ",")} ч`;
+}

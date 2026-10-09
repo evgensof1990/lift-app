@@ -11,8 +11,10 @@ import {
   type StageItem,
   type StrategyRequestItem,
   type TaskItem,
+  type TeamPainItem,
   type ToolItem,
 } from "../../api";
+import PainsTab from "./PainsTab";
 import FloorCard from "../../components/FloorCard";
 import TeamLayout, { copyText } from "./TeamLayout";
 import ChannelsPanel from "./ChannelsPanel";
@@ -28,11 +30,13 @@ type Detail = Overview & {
   answers: Answers;
   files: Record<string, FileInfo>;
   requests: StrategyRequestItem[];
+  painsFull: TeamPainItem[];
 };
 
-type Tab = "profile" | "strategy" | "tasks" | "posts" | "tools" | "survey";
+type Tab = "profile" | "pains" | "strategy" | "tasks" | "posts" | "tools" | "survey";
 const TABS: [Tab, string][] = [
   ["profile", "Профиль и цель"],
+  ["pains", "Рутина"],
   ["strategy", "Стратегия"],
   ["tasks", "Задачи"],
   ["posts", "Посты"],
@@ -78,6 +82,7 @@ export default function TeamPilot() {
         ))}
       </div>
       {tab === "profile" ? <ProfileTab d={d} reload={load} /> : null}
+      {tab === "pains" ? <PainsTab pilotId={d.pilot.id} pains={d.painsFull} reload={load} /> : null}
       {tab === "strategy" ? <StrategyTab d={d} reload={load} /> : null}
       {tab === "tasks" ? <TasksTab d={d} reload={load} /> : null}
       {tab === "posts" ? <PostsTab pilotId={d.pilot.id} /> : null}

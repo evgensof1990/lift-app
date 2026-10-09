@@ -4,6 +4,7 @@
  */
 import { gameState, isOverdue, taskPoints } from "./game.js";
 import { SURVEY_POINTS, surveyProgress } from "./survey.js";
+import { buildPains, type PainRow } from "./pains.js";
 
 export type Status = "proposed" | "accepted" | "declined";
 
@@ -60,13 +61,19 @@ export function buildOverview(
   stages: StageRow[],
   tools: ToolRow[],
   answers: Record<string, unknown>,
+  painRows: PainRow[] = [],
 ) {
   const goals = new Map(goalRows.map((g) => [g.id, g]));
   // задача в работе, только если она принята и её цель (если есть) тоже принята
   const active = (t: TaskRow) => t.status === "accepted" && (!t.goal_id || goals.get(t.goal_id)?.status === "accepted");
   const work = sortTasks(taskRows.filter(active));
   const survey = surveyProgress(answers, p.survey_sent_at);
-  const game = gameState(work, (survey.complete ? SURVEY_POINTS : 0) + (p.reviewed_at ? REVIEW_POINTS : 0), p.created_at);
+  const pains = buildPains(painRows);
+  const game = gameState(
+    work,
+    (survey.complete ? SURVEY_POINTS : 0) + (p.reviewed_at ? REVIEW_POINTS : 0) + pains.summary.points,
+    p.created_at,
+  );
   const pt = (t: TaskRow) => publicTask(t, goals);
   const goalView = (g: GoalRow) => {
     const tasks = taskRows.filter((t) => t.goal_id === g.id);
@@ -96,6 +103,8 @@ export function buildOverview(
     },
     game,
     survey: { ...survey, points: SURVEY_POINTS },
+    pains: pains.list,
+    painSummary: pains.summary,
     tasks: work.map(pt),
     goals: goalRows.filter((g) => g.status === "accepted").sort(byOrder).map(goalView),
     review: {

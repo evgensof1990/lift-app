@@ -18,6 +18,7 @@ import {
   type ToolRow,
 } from "../../api/src/model";
 import { QUESTION_BY_ID, SURVEY, SURVEY_INTRO, SURVEY_POINTS, SURVEY_TITLE, normalizeAnswer, surveyProgress } from "../../api/src/survey";
+import { buildPains, cleanPain, publicPain, type PainRow } from "../../api/src/pains";
 import tseh4 from "../../../strategies/tseh4.json";
 
 type DPilot = PilotRow & { phone: string; consent_at: string | null; archived: number; invite: string };
@@ -39,6 +40,18 @@ type State = {
 
 /** предложения пилота по стратегии — в демо только в памяти */
 const demoRequests: { id: number; goalTitle: string; text: string; status: "open" | "done"; answer: string; createdAt: string; resolvedAt: string | null }[] = [];
+
+/** рутина пилотов — в демо только в памяти */
+type DPain = PainRow & { pilot_id: number; updated_at: string };
+const demoPain = (id: number, pilot_id: number, title: string, freq: string, duration: string, area: string, status: PainRow["status"], solution = ""): DPain => ({
+  id, pilot_id, title, details: "", freq, duration, area, status, solution, saved_hours: null, team_note: "", created_by: "pilot",
+  created_at: new Date().toISOString().slice(0, 19).replace("T", " "), updated_at: "", solved_at: status === "solved" ? new Date().toISOString().slice(0, 19).replace("T", " ") : null,
+});
+const demoPains: DPain[] = [
+  demoPain(9001, 1, "Пишу посты в соцсети — выходит редко, забываю", "week", "60", "content", "solved", "Автопостинг: пишете пост один раз — он сам уходит в ВК, MAX и Telegram по расписанию."),
+  demoPain(9002, 1, "Отвечаю на одни и те же вопросы: размеры, цены, сроки изготовления", "day", "30", "clients", "building", "Делаем бота в MAX: отвечает на частые вопросы сам и передаёт вам готовую заявку."),
+];
+const teamPainView = (x: DPain) => ({ ...publicPain(x), teamNote: x.team_note, savedEstimate: x.saved_hours, updatedAt: x.updated_at });
 
 const KEY = "lift.demo.v3";
 const day = (n: number) => {
@@ -152,7 +165,7 @@ function fail(message: string, status = 400): never {
 const mine = <T extends { pilot_id: number }>(list: T[], id: number) => list.filter((x) => x.pilot_id === id);
 const gmap = (id: number) => new Map(mine(state.goals, id).map((g) => [g.id, g as GoalRow]));
 const overview = (p: DPilot) =>
-  buildOverview(p, mine(state.goals, p.id), mine(state.tasks, p.id), mine(state.stages, p.id), mine(state.tools, p.id), state.answers[p.id] || {});
+  buildOverview(p, mine(state.goals, p.id), mine(state.tasks, p.id), mine(state.stages, p.id), mine(state.tools, p.id), state.answers[p.id] || {}, mine(demoPains, p.id));
 
 function filesFor(pilotId: number) {
   return Object.fromEntries(mine(state.files, pilotId).map((f) => [f.id, { id: f.id, name: f.name, mime: f.mime, size: f.size, url: f.url }]));
@@ -217,6 +230,49 @@ export async function demoApi(path: string, method: string, json: unknown, body:
   if (path === "/api/survey" && method === "GET") {
     return { title: SURVEY_TITLE, intro: SURVEY_INTRO, points: SURVEY_POINTS, sections: SURVEY, answers: state.answers[ME] || {}, files: filesFor(ME), sentAt: pilot(ME).survey_sent_at || null };
   }
+  if (path === "/api/pains" && method === "POST") {
+    const f = cleanPain(b);
+    if (!f.title || f.title.length < 3) fail("Напишите, что отнимает время");
+    const x = demoPain(state.seq++, ME, f.title!, f.freq || "", f.duration || "", f.area || "other", "new");
+    x.details = f.details || "";
+    demoPains.push(x);
+    return { pain: publicPain(x), ...buildPains(mine(demoPains, ME)) };
+  }
+  if ((r = m(/^\/api\/pains\/(\d+)$/)) && method === "DELETE") {
+    const i = demoPains.findIndex((x) => x.id === Number(r![1]) && x.pilot_id === ME && x.status === "new");
+    if (i < 0) fail("Команда уже взяла это в работу");
+    demoPains.splice(i, 1);
+    return { ok: true };
+  }
+  if (path === "/api/team/pains") {
+    return {
+      pains: demoPains.map((x) => {
+        const p = state.pilots.find((y) => y.id === x.pilot_id);
+        return { ...teamPainView(x), pilot: { id: x.pilot_id, name: p?.name || "", business: p?.business || "", niche: p?.niche || "" } };
+      }),
+      totals: { savedHours: buildPains(demoPains).summary.savedHours, openHours: buildPains(demoPains).summary.openHours },
+    };
+  }
+  if ((r = m(/^\/api\/team\/pilots\/(\d+)\/pains$/))) {
+    const f = cleanPain(b, true);
+    if (!f.title || f.title.length < 3) fail("Опишите рутину");
+    const x = demoPain(state.seq++, Number(r[1]), f.title!, f.freq || "", f.duration || "", f.area || "other", f.status || "new");
+    Object.assign(x, { details: f.details || "", solution: f.solution || "", saved_hours: f.saved_hours ?? null, team_note: f.team_note || "", created_by: "team" });
+    demoPains.push(x);
+    return { id: x.id };
+  }
+  if ((r = m(/^\/api\/team\/pains\/(\d+)$/))) {
+    const i = demoPains.findIndex((x) => x.id === Number(r![1]));
+    if (i < 0) fail("Не найдено", 404);
+    if (method === "DELETE") {
+      demoPains.splice(i, 1);
+      return { ok: true };
+    }
+    const x = demoPains[i];
+    Object.assign(x, cleanPain(b, true), { updated_at: now() });
+    x.solved_at = x.status === "solved" ? x.solved_at || now() : null;
+    return { pain: teamPainView(x) };
+  }
   if (path === "/api/strategy-requests") {
     if (method === "POST") {
       demoRequests.unshift({ id: Date.now(), goalTitle: "", text: String(b.text || ""), status: "open", answer: "", createdAt: now(), resolvedAt: null });
@@ -278,6 +334,10 @@ export async function demoApi(path: string, method: string, json: unknown, body:
           nearest: nearest ? { title: nearest.title, dueDate: nearest.dueDate, overdue: nearest.overdue } : null,
           survey: o.survey, tools: o.tools.filter((t) => t.status !== "soon").map((t) => t.title), joined: !!p.consent_at,
           review: o.review.pending, archived: o.archive.goals.length + o.archive.tasks.length,
+          status: o.pains.some((x) => x.status === "new")
+            ? { label: "Новая рутина — разберите", tone: "action", tab: "pains" }
+            : { label: `В работе · этаж ${o.game.floor}`, tone: "ok" },
+          pains: { inWork: o.painSummary.inWork, solved: o.painSummary.solved, savedHours: o.painSummary.savedHours, openHours: o.painSummary.openHours },
         };
       }),
     };
@@ -311,6 +371,7 @@ export async function demoApi(path: string, method: string, json: unknown, body:
       allTasks: tasks.map((t) => publicTask(t, g)),
       profile: { phone: p.phone, consentAt: p.consent_at, inviteUrl: `https://lift.myrenthub.ru/invite/${p.invite}` },
       surveySections: SURVEY, answers, files: filesFor(p.id), surveyProgress: surveyProgress(answers, p.survey_sent_at), requests: demoRequests,
+      painsFull: mine(demoPains, p.id).map(teamPainView),
     };
   }
   if ((r = m(/^\/api\/team\/pilots\/(\d+)\/survey\/reopen$/))) {

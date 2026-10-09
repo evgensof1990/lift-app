@@ -4,6 +4,7 @@ import FloorCard from "../components/FloorCard";
 import InstallHint from "../components/InstallHint";
 import { IconMegaphone } from "../components/Icons";
 import Journey from "../components/Journey";
+import PainsHero from "../components/PainsHero";
 import { Logo } from "../components/Logo";
 import type { PilotCtx } from "../PilotShell";
 
@@ -20,6 +21,8 @@ export default function Home({ data }: PilotCtx) {
         {pilot.business ? <p className="muted">{pilot.business}</p> : null}
         <h1 className="h1">Привет, {pilot.name}!</h1>
       </div>
+
+      <PainsHero data={data} />
 
       <Journey data={data} />
 

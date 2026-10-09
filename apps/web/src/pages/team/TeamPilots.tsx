@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, ApiError, clearSession, dueLabel } from "../../api";
+import { api, ApiError, clearSession, dueLabel, hoursLabel } from "../../api";
 import TeamLayout, { copyText } from "./TeamLayout";
 
 type Row = {
@@ -20,7 +20,8 @@ type Row = {
   archived: number;
   tools: string[];
   joined: boolean;
-  status: { label: string; tone: "action" | "warn" | "wait" | "ok" };
+  status: { label: string; tone: "action" | "warn" | "wait" | "ok"; tab?: string };
+  pains: { inWork: number; solved: number; savedHours: number; openHours: number };
 };
 
 export default function TeamPilots() {
@@ -67,6 +68,8 @@ export default function TeamPilots() {
   const inWork = all.reduce((n, r) => n + r.tasksTotal - r.tasksDone, 0);
   const surveys = all.filter((r) => r.survey.complete).length;
   const yourMove = all.filter((r) => r.status.tone === "action").length;
+  const saved = all.reduce((n, r) => n + r.pains.savedHours, 0);
+  const painsInWork = all.reduce((n, r) => n + r.pains.inWork, 0);
 
   return (
     <TeamLayout>
@@ -107,6 +110,8 @@ export default function TeamPilots() {
       <div className="kpis">
         <div className="card"><small>Пилотов</small><b>{all.length}</b></div>
         <div className={`card${yourMove ? " card--accent" : ""}`}><small>Ждут вас</small><b>{yourMove}</b></div>
+        <div className="card"><small>Освободили пилотам</small><b>{hoursLabel(saved)} / нед</b></div>
+        <div className="card"><small>Рутины в работе</small><b>{painsInWork}</b></div>
         <div className="card"><small>Задач в работе</small><b>{inWork}</b></div>
         <div className={`card${overdue ? " card--warn" : ""}`}><small>Просрочено</small><b>{overdue}</b></div>
         <div className="card"><small>Анкет заполнено</small><b>{surveys} из {all.length}</b></div>
@@ -116,22 +121,32 @@ export default function TeamPilots() {
         <table className="table">
           <thead>
             <tr>
-              <th>Пилот</th><th>Статус</th><th>Этап</th><th>Этаж</th><th>Задачи</th><th>Ближайший срок</th><th>Анкета</th><th>Инструменты</th>
+              <th>Пилот</th><th>Статус</th><th>Рутина</th><th>Этап</th><th>Этаж</th><th>Задачи</th><th>Ближайший срок</th><th>Анкета</th><th>Инструменты</th>
             </tr>
           </thead>
           <tbody>
             {rows === null ? (
-              <tr><td colSpan={8} className="muted">Загрузка…</td></tr>
+              <tr><td colSpan={9} className="muted">Загрузка…</td></tr>
             ) : all.length === 0 ? (
-              <tr><td colSpan={8} className="muted">Пилотов пока нет — пригласите первого.</td></tr>
+              <tr><td colSpan={9} className="muted">Пилотов пока нет — пригласите первого.</td></tr>
             ) : (
               all.map((r) => (
-                <tr key={r.id} onClick={() => nav(`/team/pilots/${r.id}`)} className="table__row">
+                <tr key={r.id} onClick={() => nav(`/team/pilots/${r.id}${r.status.tab ? `?tab=${r.status.tab}` : ""}`)} className="table__row">
                   <td>
                     <Link to={`/team/pilots/${r.id}`} className="strong plain">{r.business || r.name}</Link>
                     <small className="muted block">{[r.name, r.niche].filter(Boolean).join(" · ")}{r.joined ? "" : " · не входил"}</small>
                   </td>
                   <td><span className={`status status--${r.status.tone}`}>{r.status.label}</span></td>
+                  <td>
+                    {r.pains.solved || r.pains.inWork ? (
+                      <>
+                        {r.pains.savedHours ? <span className="strong">−{hoursLabel(r.pains.savedHours)} / нед</span> : null}
+                        <small className="muted block">в работе: {r.pains.inWork} · решено: {r.pains.solved}</small>
+                      </>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
                   <td>
                     {r.stage || "—"}
                     {r.review ? <small className="accent block">ждёт согласования: {r.review}</small> : null}

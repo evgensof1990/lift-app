@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { api, dueLabel, isSoon, pointsWord, type TaskItem } from "../api";
 import type { PilotCtx } from "../PilotShell";
 
@@ -28,7 +29,10 @@ export default function Tasks({ data, reload }: PilotCtx) {
   return (
     <div className="page">
       <div>
-        <h1 className="h1">Задачи</h1>
+        <div className="section-head">
+          <h1 className="h1">Задачи</h1>
+          <Link to="/strategy" className="link">Моя стратегия</Link>
+        </div>
         <p className="muted">Сделали в срок — получили все баллы, с опозданием — половину</p>
       </div>
 

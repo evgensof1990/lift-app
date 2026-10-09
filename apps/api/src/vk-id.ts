@@ -40,6 +40,8 @@ export function vkAuthUrl(pilotId: number, b: { channelId?: number; title?: stri
     code_challenge: b64url(crypto.createHash("sha256").update(verifier).digest()),
     code_challenge_method: "S256",
     scope: SCOPE,
+    // всегда показывать окно разрешений: иначе ВК повторит прежнее согласие без wall/photos
+    prompt: "consent",
   });
   return `${VK_ID}/authorize?${q}`;
 }

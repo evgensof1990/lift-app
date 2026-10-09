@@ -1,8 +1,9 @@
 import { Link } from "react-router-dom";
-import { dueLabel, GOALS, isSoon, plural, pointsWord, TASKS } from "../api";
+import { dueLabel, isSoon } from "../api";
 import FloorCard from "../components/FloorCard";
 import InstallHint from "../components/InstallHint";
-import { IconFlag, IconForm, IconMegaphone } from "../components/Icons";
+import { IconMegaphone } from "../components/Icons";
+import Journey from "../components/Journey";
 import { Logo } from "../components/Logo";
 import type { PilotCtx } from "../PilotShell";
 
@@ -20,19 +21,7 @@ export default function Home({ data }: PilotCtx) {
         <h1 className="h1">Привет, {pilot.name}!</h1>
       </div>
 
-      {data.review.pending ? (
-        <Link to="/review" className="card card--link card--accent">
-          <span className="tile"><IconFlag /></span>
-          <span className="card__text">
-            <strong>Стратегия на согласование</strong>
-            <small>
-              {data.review.goals ? `${data.review.goals} ${plural(data.review.goals, GOALS)}, ${data.review.tasks} ${plural(data.review.tasks, TASKS)}` : `${data.review.tasks} ${plural(data.review.tasks, TASKS)}`} — выберите, что берёте
-              {!data.review.reviewed ? ` · +${data.review.points} ${pointsWord(data.review.points)}` : ""}
-            </small>
-          </span>
-          <span className="card__action">Открыть</span>
-        </Link>
-      ) : null}
+      <Journey data={data} />
 
       {data.postsWaiting ? (
         <Link to="/posts" className="card card--link card--accent">
@@ -48,37 +37,6 @@ export default function Home({ data }: PilotCtx) {
       <FloorCard game={game} />
 
       <InstallHint />
-
-      {!survey.complete ? (
-        <Link to="/survey" className="card card--link">
-          <span className="tile"><IconForm /></span>
-          <span className="card__text">
-            <strong>Анкета для сайта</strong>
-            <small>
-              Заполнено {survey.answered} из {survey.total} · +{survey.points} {pointsWord(survey.points)}
-            </small>
-          </span>
-          <span className="card__action">{survey.answered ? "Продолжить" : "Начать"}</span>
-        </Link>
-      ) : null}
-
-      {!data.tasks.length && !data.review.pending ? (
-        <section className="card stack">
-          <h2 className="h2">Что дальше</h2>
-          <ol className="next-steps">
-            <li className={survey.complete ? "done" : "now"}>
-              <strong>Анкета</strong>
-              <span>{survey.complete ? "Готово — команда её изучает." : "Ответьте на вопросы, на какие можете, и нажмите «Отправить команде» в конце."}</span>
-            </li>
-            <li className={survey.complete ? "now" : ""}>
-              <strong>Стратегия</strong>
-              <span>{survey.complete ? "Команда составляет план: цели и задачи со сроками. Обычно 1–3 дня." : "По вашим ответам команда составит план: цели и задачи со сроками."}</span>
-            </li>
-            <li><strong>Согласование</strong><span>Здесь появится «Стратегия на согласование» — вы выберете, что берёте в работу.</span></li>
-            <li><strong>Задачи и этажи</strong><span>Делаете задачи в срок — получаете баллы и поднимаетесь по этажам.</span></li>
-          </ol>
-        </section>
-      ) : null}
 
       {!data.tasks.length && !data.review.pending ? null : (
         <div className="section-head">

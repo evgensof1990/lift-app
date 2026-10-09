@@ -352,3 +352,15 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-
 
 /* Ключи соцсетей: скрыты точками, но это не «пароль» — браузер не предлагает их сохранить и не подставляет во вход */
 input.secret { -webkit-text-security: disc; }
+
+/* «Ваш путь» на главной: анкета → стратегия → согласование → работа */
+.journey__steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); position: relative; }
+.journey__steps li { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; position: relative; }
+.journey__steps li:not(:last-child)::after { content: ""; position: absolute; top: 14px; left: calc(50% + 18px); right: calc(-50% + 18px); height: 2px; background: var(--line); }
+.journey__steps li.done:not(:last-child)::after { background: var(--violet); }
+.journey__dot { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; background: var(--card-2); color: var(--muted); }
+.journey__steps li.done .journey__dot { background: var(--violet-deep); color: #fff; }
+.journey__steps li.now .journey__dot { background: var(--violet); color: #fff; box-shadow: 0 0 0 4px rgba(124, 58, 237, .25); }
+.journey__label { font-size: 11px; line-height: 1.2; color: var(--muted); font-weight: 600; }
+.journey__steps li.now .journey__label { color: var(--violet-text); }
+.journey__now { display: flex; flex-direction: column; gap: 4px; }

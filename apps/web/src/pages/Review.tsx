@@ -19,6 +19,8 @@ export default function Review({ data, reload }: PilotCtx) {
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  /** итог согласования — экран «что дальше» */
+  const [done, setDone] = useState<{ tasks: number; skipped: number; points: number; bonus: number } | null>(null);
 
   useEffect(() => {
     api<ReviewData>("/api/review").then(setReview).catch((e: Error) => setErr(e.message));
@@ -32,6 +34,42 @@ export default function Review({ data, reload }: PilotCtx) {
   );
   const taken = allTasks.filter(({ t, goalId }) => goalChoice[goalId] !== "skip" && !skipTask[t.id]);
   const takenPoints = taken.reduce((s, { t }) => s + t.points, 0);
+
+  if (done) {
+    const next = data.tasks.find((t) => !t.doneAt);
+    return (
+      <div className="page">
+        <h1 className="h1">Стратегия согласована ✓</h1>
+        {done.bonus ? <p className="accent strong">+{done.bonus} {pointsWord(done.bonus)} за согласование</p> : null}
+        <ol className="next-steps">
+          <li className="done"><strong>Анкета</strong><span>Готово.</span></li>
+          <li className="done">
+            <strong>Стратегия</strong>
+            <span>
+              В работе {done.tasks} {plural(done.tasks, TASKS)}
+              {done.skipped ? `, ${done.skipped} — в архиве: их можно вернуть со страницы «Стратегия»` : ""}.
+            </span>
+          </li>
+          <li className="now">
+            <strong>Задачи</strong>
+            <span>
+              Они уже во вкладке «Задачи», по срокам.{next ? ` Начните с «${next.title}»${next.dueDate ? ` — до ${dueLabel(next.dueDate, true)}` : ""}.` : ""} Сделали — отметьте галочкой.
+            </span>
+          </li>
+          <li>
+            <strong>Этажи</strong>
+            <span>За задачи в срок — все баллы (до +{done.points} {pointsWord(done.points)}), с опозданием — половина. Баллы поднимают вас по этажам.</span>
+          </li>
+          <li>
+            <strong>Команда рядом</strong>
+            <span>Если что-то идёт не так — «Предложить правку» во вкладке «Стратегия». Новые задачи от команды тоже придут на согласование.</span>
+          </li>
+        </ol>
+        <Link to="/tasks" className="btn btn--primary">Открыть задачи</Link>
+        <Link to="/" className="btn btn--ghost">На главную</Link>
+      </div>
+    );
+  }
 
   if (!review) return <div className="page"><p className="muted">{err || "Загрузка…"}</p></div>;
 
@@ -57,8 +95,14 @@ export default function Review({ data, reload }: PilotCtx) {
     }
     try {
       await api("/api/review", { method: "POST", json: { goals, tasks } });
+      setDone({
+        tasks: taken.length,
+        skipped: allTasks.length - taken.length,
+        points: takenPoints,
+        bonus: data.review.reviewed ? 0 : data.review.points,
+      });
+      window.scrollTo({ top: 0 });
       await reload();
-      nav("/strategy", { replace: true });
     } catch (e) {
       setErr((e as Error).message);
       setBusy(false);

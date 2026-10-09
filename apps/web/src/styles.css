@@ -402,3 +402,20 @@ input.secret { -webkit-text-security: disc; }
 .areas { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
 .areas .card { display: flex; flex-direction: column; gap: 4px; }
 .areas b { font-family: var(--display); font-size: 22px; }
+
+/* Первые шаги новичка */
+.lead-left { font-size: 16px; line-height: 1.5; color: var(--text-2); }
+.start { display: flex; flex-direction: column; gap: 14px; }
+.start__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.start__list li { position: relative; display: flex; gap: 14px; padding-bottom: 18px; }
+.start__list li:last-child { padding-bottom: 0; }
+.start__list li:not(:last-child)::after { content: ""; position: absolute; left: 15px; top: 36px; bottom: 4px; width: 2px; background: var(--line); }
+.start__list li.done:not(:last-child)::after { background: var(--violet-deep); }
+.start__dot { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: 14px; font-weight: 800; background: var(--card-2); color: var(--muted); }
+.start__list li.now .start__dot { background: var(--violet); color: #fff; box-shadow: 0 0 0 4px rgba(124, 58, 237, .25); }
+.start__list li.done .start__dot { background: var(--violet-deep); color: #fff; }
+.start__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding-top: 4px; }
+.start__body strong { font-size: 16px; }
+.start__list li:not(.now):not(.done) .start__body strong { color: var(--text-2); }
+.start__body .btn { margin-top: 8px; }
+.survey__nav--col { flex-direction: column; }

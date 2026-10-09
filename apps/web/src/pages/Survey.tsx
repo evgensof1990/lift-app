@@ -171,23 +171,25 @@ export default function Survey() {
               <h1 className="h1">Анкета у команды ✓</h1>
               <p className="accent strong">+{data.points} {pointsWord(data.points)}</p>
               <ol className="next-steps">
-                <li className="done"><strong>Анкета</strong><span>Готово. Ответы закреплены — по ним команда готовит стратегию.</span></li>
-                <li className="now"><strong>Стратегия</strong><span>Команда изучит ответы и составит план: цели и задачи со сроками. Обычно 1–3 дня.</span></li>
-                <li><strong>Согласование</strong><span>На главной появится «Стратегия на согласование» — вы выберете, что берёте в работу.</span></li>
-                <li><strong>Задачи и этажи</strong><span>Делаете задачи в срок — получаете баллы и поднимаетесь по этажам.</span></li>
+                <li className="done"><strong>Анкета</strong><span>Готово. Ответы закреплены — по ним команда готовит ваш план.</span></li>
+                <li className="now"><strong>Что отнимает у вас время?</strong><span>Пока команда изучает ответы — расскажите о рутине, которую хочется отдать. Минута на каждый пункт.</span></li>
+                <li><strong>План от команды</strong><span>Что заберём на себя и как будем расти. Обычно 1–3 дня — появится на главной, решать будете вы.</span></li>
               </ol>
             </>
           )}
           {err ? <p className="error">{err}</p> : null}
         </div>
         <footer className="survey__footer">
-          <div className="survey__nav">
+          <div className={`survey__nav${finish === "sent" ? " survey__nav--col" : ""}`}>
             {finish === "check" ? (
               <button type="button" className="btn btn--primary" disabled={sending} onClick={() => void send()}>
                 {sending ? "Отправляем…" : "Отправить как есть"}
               </button>
             ) : (
-              <Link to="/" className="btn btn--primary">На главную</Link>
+              <>
+                <Link to="/pains?new=1" className="btn btn--primary">Рассказать о рутине</Link>
+                <Link to="/" className="btn btn--soft">На главную</Link>
+              </>
             )}
           </div>
         </footer>

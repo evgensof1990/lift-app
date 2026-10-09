@@ -5,12 +5,30 @@ import InstallHint from "../components/InstallHint";
 import { IconMegaphone } from "../components/Icons";
 import Journey from "../components/Journey";
 import PainsHero from "../components/PainsHero";
+import StartSteps from "../components/StartSteps";
 import { Logo } from "../components/Logo";
 import type { PilotCtx } from "../PilotShell";
 
 export default function Home({ data }: PilotCtx) {
   const { pilot, game, survey } = data;
   const upcoming = data.tasks.filter((t) => !t.doneAt).slice(0, 3);
+  // новичок: команда ещё не прислала план — только приветствие и «С чего начать»
+  const hasPlan = data.review.pending > 0 || data.tasks.length > 0 || data.goals.length > 0;
+  if (!hasPlan) {
+    return (
+      <div className="page">
+        <header className="page__bar">
+          <Logo />
+        </header>
+        <div className="stack">
+          <h1 className="h1">Привет, {pilot.name}!</h1>
+          <p className="lead-left">«Лифт» забирает рутину вашего бизнеса, чтобы у вас оставалось больше времени на продажи и своё дело.</p>
+        </div>
+        <StartSteps data={data} />
+        <InstallHint />
+      </div>
+    );
+  }
   return (
     <div className="page">
       <header className="page__bar">

@@ -6,6 +6,7 @@ import Survey from "./pages/Survey";
 import TeamLogin from "./pages/team/TeamLogin";
 import TeamPilots from "./pages/team/TeamPilots";
 import TeamPilot from "./pages/team/TeamPilot";
+import TeamPains from "./pages/team/TeamPains";
 import Welcome from "./pages/Welcome";
 
 function PilotOnly({ children }: { children: React.ReactNode }) {
@@ -24,6 +25,7 @@ export default function App() {
       <Route path="/invite/:token" element={<Invite />} />
       <Route path="/team/login" element={<TeamLogin />} />
       <Route path="/team" element={<TeamOnly><TeamPilots /></TeamOnly>} />
+      <Route path="/team/pains" element={<TeamOnly><TeamPains /></TeamOnly>} />
       <Route path="/team/pilots/:id" element={<TeamOnly><TeamPilot /></TeamOnly>} />
       <Route path="/survey" element={<PilotOnly><Survey /></PilotOnly>} />
       <Route path="/*" element={<PilotOnly><PilotShell /></PilotOnly>} />

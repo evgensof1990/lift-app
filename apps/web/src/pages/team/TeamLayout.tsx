@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import { api, clearSession } from "../../api";
 import { LogoMark } from "../../components/Logo";
 
@@ -16,6 +16,10 @@ export default function TeamLayout({ children }: { children: React.ReactNode }) 
           <LogoMark size={30} />
           <span className="logo__word">Лифт · команда</span>
         </Link>
+        <nav className="team-nav">
+          <NavLink to="/team" end>Пилоты</NavLink>
+          <NavLink to="/team/pains">Рутина пилотов</NavLink>
+        </nav>
         <button type="button" className="btn btn--ghost" onClick={() => void logout()}>Выйти</button>
       </header>
       <main className="team__main">{children}</main>

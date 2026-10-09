@@ -3,7 +3,8 @@ import { randomToken, requireTeam } from "../auth.js";
 import { config } from "../config.js";
 import { db, type Goal, type Pilot, type Task } from "../db.js";
 import { filesInfo, saveAnswers } from "../answers.js";
-import { getAnswers, getPilot, listGoals, listRequests, listTasks, pilotOverview } from "../pilot-data.js";
+import { getAnswers, getPilot, listGoals, listPains, listRequests, listTasks, pilotOverview } from "../pilot-data.js";
+import { cleanPain, painHours, painSaved, publicPain, type PainRow } from "../pains.js";
 import { isOverdue } from "../game.js";
 import { parseStrategy, publicTask } from "../model.js";
 import { importStrategy } from "../strategy.js";
@@ -42,11 +43,13 @@ function pilotStatus(s: {
   overdue: number;
   floor: number;
   requests: number;
-}): { label: string; tone: "action" | "warn" | "wait" | "ok" } {
+  pains: number;
+}): { label: string; tone: "action" | "warn" | "wait" | "ok"; tab?: string } {
   if (!s.joined) return { label: "Не входил — отправьте приглашение", tone: "wait" };
-  if (s.requests) return { label: `Просит поправить стратегию: ${s.requests}`, tone: "action" };
+  if (s.pains) return { label: `Новая рутина — разберите: ${s.pains}`, tone: "action", tab: "pains" };
+  if (s.requests) return { label: `Просит поправить стратегию: ${s.requests}`, tone: "action", tab: "strategy" };
   if (!s.hasPlan && !s.survey.complete) return { label: `Заполняет анкету: ${s.survey.requiredDone} из ${s.survey.requiredTotal} обязательных`, tone: "wait" };
-  if (!s.hasPlan) return { label: "Анкета готова — нужна стратегия", tone: "action" };
+  if (!s.hasPlan) return { label: "Анкета готова — нужна стратегия", tone: "action", tab: "survey" };
   if (s.review) return { label: "Согласовывает стратегию", tone: "wait" };
   if (s.overdue) return { label: `В работе · просрочено: ${s.overdue}`, tone: "warn" };
   return { label: `В работе · этаж ${s.floor}`, tone: "ok" };
@@ -75,7 +78,9 @@ teamRouter.get("/pilots", (_req, res) => {
           overdue,
           floor: o.game.floor,
           requests: (openRequests.get(p.id) as { n: number }).n,
+          pains: o.pains.filter((x) => x.status === "new").length,
         }),
+        pains: { inWork: o.painSummary.inWork, solved: o.painSummary.solved, savedHours: o.painSummary.savedHours, openHours: o.painSummary.openHours },
         id: p.id,
         name: p.name,
         business: p.business,
@@ -134,6 +139,7 @@ teamRouter.get("/pilots/:id", (req, res) => {
     files: filesInfo(p.id, answers),
     surveyProgress: surveyProgress(answers, p.survey_sent_at),
     requests: listRequests(p.id),
+    painsFull: listPains(p.id).map(teamPain),
   });
 });
 
@@ -493,4 +499,73 @@ teamRouter.post("/pilots/:id/survey/import", (req, res) => {
   const skipped = Object.keys(raw).filter((k) => !(k in saved));
   if (req.body?.sent) db.prepare("UPDATE pilots SET survey_sent_at = COALESCE(survey_sent_at, datetime('now')) WHERE id = ?").run(p.id);
   res.json({ saved: r.saved, skipped });
+});
+
+/* ——— рутина пилотов: разбираем, автоматизируем, учимся на похожих случаях ——— */
+
+function teamPain(p: PainRow) {
+  return { ...publicPain(p), teamNote: p.team_note, savedEstimate: p.saved_hours, updatedAt: (p as PainRow & { updated_at?: string }).updated_at || "" };
+}
+
+teamRouter.post("/pilots/:id/pains", (req, res) => {
+  const p = pilotOr404(Number(req.params.id), res);
+  if (!p) return;
+  const f = cleanPain(req.body || {}, true);
+  if (!f.title || f.title.length < 3) {
+    res.status(400).json({ error: "Опишите рутину" });
+    return;
+  }
+  const status = f.status || "new";
+  const info = db
+    .prepare(
+      `INSERT INTO pains (pilot_id, title, details, freq, duration, area, status, solution, saved_hours, team_note, created_by, solved_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'team', ${status === "solved" ? "datetime('now')" : "NULL"})`,
+    )
+    .run(p.id, f.title, f.details || "", f.freq || "", f.duration || "", f.area || "other", status, f.solution || "", f.saved_hours ?? null, f.team_note || "");
+  res.json({ id: Number(info.lastInsertRowid) });
+});
+
+teamRouter.put("/pains/:id", (req, res) => {
+  const cur = db.prepare("SELECT * FROM pains WHERE id = ?").get(Number(req.params.id)) as PainRow | undefined;
+  if (!cur) {
+    res.status(404).json({ error: "Не найдено" });
+    return;
+  }
+  const f = cleanPain(req.body || {}, true);
+  if (f.title !== undefined && f.title.length < 3) {
+    res.status(400).json({ error: "Опишите рутину" });
+    return;
+  }
+  const next = { ...cur, ...f };
+  const solvedAt = next.status === "solved" ? cur.solved_at || new Date().toISOString().slice(0, 19).replace("T", " ") : null;
+  db.prepare(
+    `UPDATE pains SET title = ?, details = ?, freq = ?, duration = ?, area = ?, status = ?, solution = ?, saved_hours = ?, team_note = ?,
+     solved_at = ?, updated_at = datetime('now') WHERE id = ?`,
+  ).run(next.title, next.details, next.freq, next.duration, next.area, next.status, next.solution, next.saved_hours, next.team_note, solvedAt, cur.id);
+  res.json({ pain: teamPain(db.prepare("SELECT * FROM pains WHERE id = ?").get(cur.id) as PainRow) });
+});
+
+teamRouter.delete("/pains/:id", (req, res) => {
+  db.prepare("DELETE FROM pains WHERE id = ?").run(Number(req.params.id));
+  res.json({ ok: true });
+});
+
+/** Вся рутина всех пилотов: что повторяется в разных нишах — то и автоматизируем в первую очередь */
+teamRouter.get("/pains", (_req, res) => {
+  const rows = db
+    .prepare(
+      `SELECT pains.*, pilots.name AS pilot_name, pilots.business AS pilot_business, pilots.niche AS pilot_niche
+       FROM pains JOIN pilots ON pilots.id = pains.pilot_id WHERE pilots.archived = 0 ORDER BY pains.id DESC`,
+    )
+    .all() as (PainRow & { pilot_id: number; pilot_name: string; pilot_business: string; pilot_niche: string })[];
+  res.json({
+    pains: rows.map((r) => ({
+      ...teamPain(r),
+      pilot: { id: r.pilot_id, name: r.pilot_name, business: r.pilot_business, niche: r.pilot_niche },
+    })),
+    totals: {
+      savedHours: Math.round(rows.reduce((s, r) => s + painSaved(r), 0) * 10) / 10,
+      openHours: Math.round(rows.filter((r) => r.status !== "solved" && r.status !== "later").reduce((s, r) => s + painHours(r), 0) * 10) / 10,
+    },
+  });
 });

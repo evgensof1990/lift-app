@@ -5,7 +5,8 @@ import { filesInfo, saveAnswers, upload, registerUploads } from "../answers.js";
 import { applyChanges } from "../strategy.js";
 import { channelView, deletePost, listChannels, listPosts, markManual, retryPost, savePost, waitingCount } from "../posting.js";
 import { applyDecisions, publicTask, type Decisions } from "../model.js";
-import { getAnswers, getPilot, listRequests, listGoals, listTasks, pilotOverview, pilotReview } from "../pilot-data.js";
+import { getAnswers, getPilot, listPains, listRequests, listGoals, listTasks, pilotOverview, pilotReview } from "../pilot-data.js";
+import { buildPains, cleanPain, publicPain, type PainRow } from "../pains.js";
 import { vkAuthUrl } from "../vk-id.js";
 import { SURVEY, SURVEY_INTRO, SURVEY_POINTS, SURVEY_TITLE } from "../survey.js";
 
@@ -195,4 +196,36 @@ pilotRouter.post("/strategy-requests", (req, res) => {
     : undefined;
   db.prepare("INSERT INTO strategy_requests (pilot_id, goal_id, goal_title, text) VALUES (?, ?, ?, ?)").run(pilotId, goal?.id ?? null, goal?.title ?? "", text);
   res.json({ ok: true, requests: listRequests(pilotId) });
+});
+
+/* ——— рутина: пилот рассказывает, что отнимает время, команда забирает это на себя ——— */
+
+pilotRouter.post("/pains", (req, res) => {
+  const pilotId = req.session!.pilotId!;
+  const f = cleanPain(req.body || {});
+  if (!f.title || f.title.length < 3) {
+    res.status(400).json({ error: "Напишите, что отнимает время" });
+    return;
+  }
+  const fresh = (db.prepare("SELECT COUNT(*) AS n FROM pains WHERE pilot_id = ? AND status = 'new'").get(pilotId) as { n: number }).n;
+  if (fresh >= 30) {
+    res.status(429).json({ error: "Команда ещё не разобрала 30 прошлых — дождитесь ответа" });
+    return;
+  }
+  const info = db
+    .prepare("INSERT INTO pains (pilot_id, title, details, freq, duration, area, created_by) VALUES (?, ?, ?, ?, ?, ?, 'pilot')")
+    .run(pilotId, f.title, f.details || "", f.freq || "", f.duration || "", f.area || "other");
+  const row = db.prepare("SELECT * FROM pains WHERE id = ?").get(info.lastInsertRowid) as PainRow;
+  res.json({ pain: publicPain(row), ...buildPains(listPains(pilotId)) });
+});
+
+/** Пилот может убрать только то, что команда ещё не начала разбирать */
+pilotRouter.delete("/pains/:id", (req, res) => {
+  const pilotId = req.session!.pilotId!;
+  const r = db.prepare("DELETE FROM pains WHERE id = ? AND pilot_id = ? AND status = 'new' AND created_by = 'pilot'").run(Number(req.params.id), pilotId);
+  if (!r.changes) {
+    res.status(400).json({ error: "Команда уже взяла это в работу — напишите менеджеру, если неактуально" });
+    return;
+  }
+  res.json({ ok: true, ...buildPains(listPains(pilotId)) });
 });

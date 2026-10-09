@@ -286,3 +286,28 @@ export type PostTarget = {
   attempts: number;
   sent_at: string | null;
 };
+
+/**
+ * Рутина пилота: что отнимает у него время. Пилот рассказывает (или команда записывает со звонка),
+ * команда разбирается и автоматизирует; solution видит пилот, team_note — только команда (как решали — для других пилотов).
+ */
+db.exec(`
+CREATE TABLE IF NOT EXISTS pains (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pilot_id INTEGER NOT NULL REFERENCES pilots(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  details TEXT NOT NULL DEFAULT '',
+  freq TEXT NOT NULL DEFAULT '',          -- day | week3 | week | month (pains.ts)
+  duration TEXT NOT NULL DEFAULT '',      -- 15 | 30 | 60 | 120 минут за раз
+  area TEXT NOT NULL DEFAULT 'other',
+  -- new — пилот рассказал, study — разбираемся, building — автоматизируем, solved — «Лифт» делает за пилота, later — отложили
+  status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'study', 'building', 'solved', 'later')),
+  solution TEXT NOT NULL DEFAULT '',
+  saved_hours REAL,                       -- оценка команды, часов в неделю; NULL — считаем всё время рутины
+  team_note TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL DEFAULT 'pilot',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  solved_at TEXT
+);
+`);

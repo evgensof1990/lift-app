@@ -1,4 +1,5 @@
 import { db, type Goal, type Pilot, type Stage, type StrategyRequest, type Task, type Tool } from "./db.js";
+import type { PainRow } from "./pains.js";
 import { buildOverview, buildReview } from "./model.js";
 
 export function listRequests(pilotId: number) {
@@ -58,9 +59,14 @@ export function pilotOverview(pilot: Pilot) {
     listStages(pilot.id),
     listTools(pilot.id),
     getAnswers(pilot.id),
+    listPains(pilot.id),
   );
 }
 
 export function pilotReview(pilotId: number) {
   return buildReview(listGoals(pilotId), listTasks(pilotId));
+}
+
+export function listPains(pilotId: number) {
+  return db.prepare("SELECT * FROM pains WHERE pilot_id = ? ORDER BY id").all(pilotId) as PainRow[];
 }

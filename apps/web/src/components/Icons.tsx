@@ -29,6 +29,9 @@ export const IconGrid = ({ size }: P) => (
     <rect x="13" y="13" width="7" height="7" rx="2" />
   </svg>
 );
+export const IconClock = ({ size }: P) => (
+  <svg {...base(size)}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+);
 export const IconForm = ({ size }: P) => (
   <svg {...base(size)}><rect x="5" y="3" width="14" height="18" rx="3" /><path d="M9 8h6M9 12h6M9 16h3" /></svg>
 );

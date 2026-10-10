@@ -48,7 +48,7 @@ export default function Home({ data }: PilotCtx) {
         <Link to="/posts" className="card card--link card--accent">
           <span className="tile"><IconMegaphone /></span>
           <span className="card__text">
-            <strong>Пора опубликовать в Instagram</strong>
+            <strong>Пора опубликовать с телефона</strong>
             <small>Готово постов: {data.postsWaiting} — одно касание</small>
           </span>
           <span className="card__action">Открыть</span>

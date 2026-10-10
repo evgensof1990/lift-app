@@ -9,6 +9,8 @@ export type PostTargetView = { channelId: number; kind: ChannelKind; title: stri
 export type PostView = {
   id: number;
   text: string;
+  /** подпись для Telegram и Дзена, если в посте видео */
+  shortText: string;
   photos: FileInfo[];
   publishAt: string | null;
   status: "draft" | "scheduled" | "publishing" | "waiting" | "done" | "partial" | "failed";
@@ -24,7 +26,7 @@ const STATUS: Record<PostView["status"], [string, string]> = {
   draft: ["Черновик", "muted"],
   scheduled: ["Запланирован", "accent"],
   publishing: ["Публикуется…", "accent"],
-  waiting: ["Ждёт вас в Instagram", "warn"],
+  waiting: ["Ждёт публикации с телефона", "warn"],
   done: ["Опубликован", "ok"],
   partial: ["Опубликован частично", "warn"],
   failed: ["Не опубликован", "error"],
@@ -164,7 +166,7 @@ function PostCard({ p, onEdit, act, urls }: { p: PostView; onEdit?: () => void; 
         </ul>
       ) : null}
       {p.targets
-        .filter((t) => t.status === "manual")
+        .filter((t) => t.status === "manual" && t.kind !== "dzen")
         .map((t) => (
           <ManualPublish key={t.channelId} p={p} t={t} act={act} urls={urls} />
         ))}
@@ -208,6 +210,7 @@ function PostEditor({
   onCancel: () => void;
 }) {
   const [text, setText] = useState(post?.text || "");
+  const [shortText, setShortText] = useState(post?.shortText || "");
   const [photos, setPhotos] = useState<FileInfo[]>(post?.photos || []);
   const [selected, setSelected] = useState<number[]>(post ? post.targets.map((t) => t.channelId) : channels.map((c) => c.id));
   const [mode, setMode] = useState<"now" | "schedule">(post?.publishAt && post.status === "scheduled" ? "schedule" : "now");
@@ -236,11 +239,15 @@ function PostEditor({
     }
   }
 
+  // Дзен делает из поста Telegram ролик, только если подпись к видео ≤ 140 знаков
+  const needShort = photos.some(isVideoFile) && channels.some((c) => (c.kind === "tg" || c.kind === "dzen") && selected.includes(c.id));
+
   async function save(kind: "draft" | "now" | "schedule") {
     setBusy(true);
     setErr("");
     const body = {
       text,
+      shortText: needShort ? shortText : "",
       photos: photos.map((f) => f.id),
       channelIds: selected,
       mode: kind,
@@ -308,6 +315,24 @@ function PostEditor({
         )}
       </fieldset>
 
+      {needShort ? (
+        <label className="field">
+          <span>Подпись к видео для Telegram и Дзена</span>
+          <textarea rows={3} value={shortText} maxLength={140} onChange={(e) => setShortText(e.target.value)} placeholder="Коротко, до 140 знаков" />
+          <small className={text.length > 140 && !shortText.trim() ? "warn" : "muted"}>
+            {shortText.length} / 140 ·{" "}
+            {text.length > 140 && !shortText.trim()
+              ? "без короткой подписи Дзен опубликует только текст, без ролика"
+              : "Дзен делает ролик, только если подпись не длиннее 140 знаков. Полный текст уйдёт в MAX, ВК и Instagram"}
+          </small>
+          {!shortText.trim() && text.trim() ? (
+            <button type="button" className="btn btn--ghost" style={{ alignSelf: "flex-start" }} onClick={() => setShortText(shorten(text))}>
+              Взять начало текста
+            </button>
+          ) : null}
+        </label>
+      ) : null}
+
       <fieldset className="q">
         <legend className="field-legend">Когда</legend>
         <div className="segmented">
@@ -331,19 +356,30 @@ function PostEditor({
   );
 }
 
-/** Instagram: подпись в буфер + фото в «Поделиться», затем «Опубликовал» */
+/** Начало текста до 140 знаков — по границе слова */
+function shorten(text: string) {
+  const t = text.trim().replace(/\s+/g, " ");
+  if (t.length <= 140) return t;
+  const cut = t.slice(0, 139);
+  return `${cut.slice(0, cut.lastIndexOf(" ") > 80 ? cut.lastIndexOf(" ") : 139).replace(/[,.;:—-]+$/, "")}…`;
+}
+
+/** Instagram и Telegram «с телефона»: подпись в буфер + фото и видео в «Поделиться», затем «Опубликовал» */
 function ManualPublish({ p, t, act, urls }: { p: PostView; t: PostTargetView; act: (fn: () => Promise<unknown>) => Promise<void>; urls: PostsApi }) {
   const [step, setStep] = useState<"start" | "shared" | "copied">("start");
   const [err, setErr] = useState("");
+  const tg = t.kind === "tg";
+  const app = tg ? "Telegram" : "Instagram";
+  const caption = tg && p.shortText && p.photos.some(isVideoFile) ? p.shortText : p.text;
   return (
     <div className="manual">
       <p className="small">
         <strong>{t.title}:</strong>{" "}
         {step === "start"
-          ? "нажмите кнопку — подпись скопируется, фото и видео откроются в «Поделиться». Выберите Instagram и вставьте подпись."
+          ? `нажмите кнопку — подпись скопируется, фото и видео откроются в «Поделиться». Выберите ${tg ? "Telegram → канал" : "Instagram"} и вставьте подпись.`
           : step === "shared"
             ? "Опубликовали? Отметьте — пост перейдёт в «Опубликовано»."
-            : "Подпись скопирована. Сохраните фото и видео (нажмите и удерживайте) и опубликуйте их в Instagram."}
+            : `Подпись скопирована. Сохраните фото и видео (нажмите и удерживайте) и опубликуйте их в ${app}.`}
       </p>
       {err ? <p className="error small">{err}</p> : null}
       <div className="row-gap">
@@ -351,7 +387,7 @@ function ManualPublish({ p, t, act, urls }: { p: PostView; t: PostTargetView; ac
           type="button"
           className="btn btn--primary"
           onClick={() =>
-            void shareToInstagram(p.text, p.photos)
+            void shareToInstagram(caption, p.photos, app)
               .then((r) => setStep(r === "shared" ? "shared" : "copied"))
               .catch((e: Error) => {
                 if (e.name !== "AbortError") setErr(e.message);
@@ -359,7 +395,7 @@ function ManualPublish({ p, t, act, urls }: { p: PostView; t: PostTargetView; ac
               })
           }
         >
-          Опубликовать в Instagram
+          Опубликовать в {app}
         </button>
         <button type="button" className="btn btn--soft" onClick={() => void act(() => api(`${urls.item(p.id)}/targets/${t.channelId}/done`, { method: "POST", json: {} }))}>
           Готово — опубликовал

@@ -26,7 +26,7 @@ function toBase64(blob: Blob) {
   });
 }
 
-export async function shareToInstagram(text: string, photos: FileInfo[]): Promise<ShareResult> {
+export async function shareToInstagram(text: string, photos: FileInfo[], app = "Instagram"): Promise<ShareResult> {
   await copy(text);
   const blobs = await Promise.all(photos.map(async (f) => ({ f, blob: await (await fetch(f.url)).blob() })));
 
@@ -39,7 +39,7 @@ export async function shareToInstagram(text: string, photos: FileInfo[]): Promis
       const saved = await Filesystem.writeFile({ path: `lift-share-${Date.now()}-${i}.${ext}`, data: await toBase64(blob), directory: Directory.Cache });
       files.push(saved.uri);
     }
-    await Share.share({ title: "Instagram", text, files: files.length ? files : undefined, dialogTitle: "Выберите Instagram" });
+    await Share.share({ title: app, text, files: files.length ? files : undefined, dialogTitle: `Выберите ${app}` });
     return "shared";
   }
 

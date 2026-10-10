@@ -269,6 +269,7 @@ export type Post = {
   id: number;
   pilot_id: number;
   text: string;
+  short_text: string;
   photos: string;
   publish_at: string | null;
   status: "draft" | "scheduled" | "publishing" | "waiting" | "done" | "partial" | "failed";
@@ -311,3 +312,6 @@ CREATE TABLE IF NOT EXISTS pains (
   solved_at TEXT
 );
 `);
+
+// короткая подпись для Telegram и Дзена: ролик в Дзене получается, только если подпись к видео ≤ 140 знаков
+addColumn("posts", "short_text", "TEXT NOT NULL DEFAULT ''");

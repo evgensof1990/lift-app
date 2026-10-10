@@ -3,7 +3,7 @@ import { api } from "../../api";
 import type { ChannelView } from "../../components/Posts";
 
 type Kind = "vk" | "max" | "tg" | "dzen" | "instagram";
-type Draft = { kind: Kind; title: string; target: string; token: string };
+type Draft = { kind: Kind; title: string; target: string; token: string; manual?: boolean };
 const EMPTY: Draft = { kind: "vk", title: "", target: "", token: "" };
 
 const KIND_LABEL: Record<Kind, string> = { tg: "Telegram", max: "MAX", vk: "ВКонтакте", dzen: "Дзен", instagram: "Instagram" };
@@ -112,7 +112,7 @@ export default function ChannelsPanel({ pilotId, onChange }: { pilotId: number; 
         <div key={c.id} className="channel">
           <div className="channel__head">
             <strong>{c.title}</strong>
-            <span className="muted small">{KIND_LABEL[c.kind]} · {c.target}</span>
+            <span className="muted small">{KIND_LABEL[c.kind]} · {c.target}{c.kind === "tg" && c.manual ? " · с телефона" : ""}</span>
           </div>
           {c.vkid && !c.vkWall ? (
             <p className="small warn">ВК пока не дал право публиковать на стене. Когда поддержка VK ID откроет доступ — «Изменить» → «Подключить через ВКонтакте».</p>
@@ -126,7 +126,7 @@ export default function ChannelsPanel({ pilotId, onChange }: { pilotId: number; 
               onClick={() => {
                 setChats(null);
                 setEditId(c.id);
-                setDraft({ kind: c.kind, title: c.title, target: c.target, token: "" });
+                setDraft({ kind: c.kind, title: c.title, target: c.target, token: "", manual: c.kind === "tg" ? !!c.manual : undefined });
               }}
             >
               Изменить
@@ -167,7 +167,16 @@ export default function ChannelsPanel({ pilotId, onChange }: { pilotId: number; 
               Подключить через ВКонтакте
             </button>
           ) : null}
-          {NO_TOKEN.includes(draft.kind) ? null : (
+          {draft.kind === "tg" ? (
+            <label className="check check--top">
+              <input type="checkbox" checked={!!draft.manual} onChange={(e) => setDraft({ ...draft, manual: e.target.checked })} />
+              <span>
+                Публиковать с телефона — сервер не достаёт до Telegram (в России его блокируют). У поста появится «Опубликовать в Telegram»: текст
+                копируется, фото и видео открываются в «Поделиться». Токен бота не нужен.
+              </span>
+            </label>
+          ) : null}
+          {NO_TOKEN.includes(draft.kind) || (draft.kind === "tg" && draft.manual) ? null : (
             <label className="field"><span>{HELP[draft.kind].token}{editId ? " (пусто — оставить прежний)" : ""}</span>
               <input type="text" className="secret" name="channel-key" autoComplete="off" spellCheck={false} data-lpignore="true" value={draft.token} onChange={(e) => setDraft({ ...draft, token: e.target.value })} /></label>
           )}

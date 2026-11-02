@@ -5,7 +5,7 @@
  */
 import { config } from "./config.js";
 import { db, type Channel, type ChannelKind, type Post, type PostTarget } from "./db.js";
-import { freshVkConfig } from "./vk-id.js";
+import { freshVkConfig, vkMissingScopes, vkScopeHint } from "./vk-id.js";
 import { filePath, maxPublisher, tgPublisher, vkPublisher, type MaxConfig, type PostPayload, type TgConfig, type VkConfig } from "./publishers.js";
 
 const MAX_ATTEMPTS = 3;
@@ -94,8 +94,9 @@ export async function checkChannel(c: Channel) {
   if (c.kind === "vk") {
     const fresh = await freshVkConfig(c);
     const info = await vkPublisher.check(fresh as VkConfig);
-    if (fresh.refreshToken && !fresh.scope.split(/[\s,]+/).includes("wall")) {
-      throw new Error(`${info} найдено, но ВК пока не дал право публиковать на стене (wall). Ждём ответ поддержки VK ID, потом нажмите «Изменить» → «Подключить через ВКонтакте» ещё раз.`);
+    if (fresh.refreshToken) {
+      const missing = vkMissingScopes(fresh.scope);
+      if (missing.length) throw new Error(`${info} найдено, но ${vkScopeHint(missing)}`);
     }
     return info;
   }
@@ -280,6 +281,11 @@ export async function runDue() {
   }
 }
 
+class VkScopeError extends Error {}
+
+/** Сетевые ошибки до api.telegram.org (а не ответы самого Telegram) */
+const TG_NETWORK_ERROR = /fetch failed|ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|UND_ERR|aborted|timeout|socket hang up/i;
+
 async function publishPost(p: Post) {
   db.prepare("UPDATE posts SET status = 'publishing' WHERE id = ?").run(p.id);
   const photos = photoRows(p.pilot_id, parse<string[]>(p.photos, [])).map((f) => ({ path: filePath(f.id), name: f.original_name, mime: f.mime }));
@@ -315,9 +321,16 @@ async function publishPost(p: Post) {
     try {
       if (!t.enabled) throw new Error("Канал выключен");
       const cfg = parse<Record<string, string>>(t.config, {});
+      const vkCfg = t.kind === "vk" ? await freshVkConfig({ id: t.channel_id, config: t.config }) : null;
+      if (vkCfg?.refreshToken) {
+        // ключ VK ID без нужных прав: ВК ответит «код 15» — сразу объясняем, что включить
+        const need = ["wall", ...(photos.some((f) => !f.mime.startsWith("video/")) ? ["photos"] : []), ...(photos.some((f) => f.mime.startsWith("video/")) ? ["video"] : [])];
+        const missing = vkMissingScopes(vkCfg.scope, need);
+        if (missing.length) throw new VkScopeError(vkScopeHint(missing));
+      }
       const r =
-        t.kind === "vk"
-          ? await vkPublisher.publish((await freshVkConfig({ id: t.channel_id, config: t.config })) as VkConfig, payload)
+        vkCfg
+          ? await vkPublisher.publish(vkCfg as VkConfig, payload)
           : t.kind === "tg"
             ? await tgPublisher.publish(cfg as TgConfig, tgPayload)
             : await maxPublisher.publish(cfg as MaxConfig, payload);
@@ -327,7 +340,15 @@ async function publishPost(p: Post) {
         t.channel_id,
       );
     } catch (e) {
-      const attempts = t.attempts + 1;
+      // В России сервер часто вообще не достаёт до Telegram (блокировка): повторы не помогут —
+      // сразу отдаём пост пилоту на публикацию с телефона, Дзен подхватит его из канала
+      if (t.kind === "tg" && TG_NETWORK_ERROR.test(String((e as Error).message))) {
+        setTarget.run("manual", "", "Сервер не достучался до Telegram (блокировка) — опубликуйте с телефона", null, p.id, t.channel_id);
+        console.warn(`[posting] пост ${p.id}: Telegram недоступен с сервера — переведён в публикацию с телефона`);
+        continue;
+      }
+      // нет прав ВК — повторы ничего не дадут
+      const attempts = e instanceof VkScopeError || /\(код 15\)/.test(String((e as Error).message)) ? MAX_ATTEMPTS : t.attempts + 1;
       db.prepare("UPDATE post_targets SET status = ?, error = ?, attempts = ? WHERE post_id = ? AND channel_id = ?").run(
         attempts >= MAX_ATTEMPTS ? "failed" : "pending",
         String((e as Error).message).slice(0, 500),

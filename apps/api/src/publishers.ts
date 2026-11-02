@@ -54,7 +54,18 @@ export async function vkResolveGroup(groupId: string, token: string) {
 }
 
 async function vkUploadPhoto(groupId: string, token: string, photo: Media) {
-  const server = (await vk("photos.getWallUploadServer", { group_id: groupId }, token)) as { upload_url: string };
+  let server: { upload_url: string };
+  try {
+    server = (await vk("photos.getWallUploadServer", { group_id: groupId }, token)) as typeof server;
+  } catch (e) {
+    if (/код (15|27)\)/.test((e as Error).message)) {
+      throw new Error(
+        "ВК не дал доступ к фотографиям (код 15). В кабинете VK ID (id.vk.com/about/business/go) → приложение → «Доступы» включите «Фотографии», " +
+          "потом в «Лифте»: канал ВК → «Изменить» → «Подключить через ВКонтакте»",
+      );
+    }
+    throw e;
+  }
   const form = new FormData();
   form.append("photo", await fileBlob(photo), photo.name);
   const up = await readJson(await fetch(server.upload_url, { method: "POST", body: form }), "ВК загрузка фото");

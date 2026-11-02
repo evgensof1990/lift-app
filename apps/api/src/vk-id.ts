@@ -94,6 +94,23 @@ export async function vkCallback(q: Record<string, unknown>) {
   return { by: p.by, pilotId: p.pilotId, hasWall: cfg.scope.split(/[\s,]+/).includes("wall") };
 }
 
+const SCOPE_LABEL: Record<string, string> = { wall: "«Стена»", photos: "«Фотографии»", video: "«Видеозаписи»" };
+
+/** Каких прав для публикации не хватает ключу VK ID (scope — строка через пробел, как её вернул ВК) */
+export function vkMissingScopes(scope: string | undefined, need: string[] = ["wall", "photos", "video"]) {
+  const have = String(scope || "").split(/[\s,]+/);
+  return need.filter((s) => !have.includes(s));
+}
+
+/** Подсказка владельцу: ВК выдаёт только те права, что включены у приложения в кабинете VK ID */
+export function vkScopeHint(missing: string[]) {
+  const names = missing.map((s) => SCOPE_LABEL[s] || s).join(", ");
+  return (
+    `ВК не дал приложению доступ: ${names}. Откройте кабинет VK ID (id.vk.com/about/business/go) → ваше приложение → «Доступы», ` +
+    `включите ${names} и сохраните. Потом в «Лифте»: канал ВК → «Изменить» → «Подключить через ВКонтакте» и разрешите всё в окне ВК.`
+  );
+}
+
 const refreshing = new Map<number, Promise<Record<string, string>>>();
 
 /** Конфиг ВК-канала с живым ключом: ключ VK ID обновляется, если до конца жизни меньше 5 минут */
